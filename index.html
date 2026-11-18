@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>OpenDorf</title>
+<meta name="description" content="Grow a medieval realm one hex tile at a time.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2 28 9v14l-12 7L4 23V9z' fill='%23b9d24a' stroke='%233b2a1a' stroke-width='2'/%3E%3Cpath d='M11 22v-6l5-4 5 4v6z' fill='%233f7fd9' stroke='%233b2a1a' stroke-width='1.5'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div id="loading"><div class="title">OpenDorf</div><div class="bar"><i id="loadbar"></i></div></div>
+
+<div id="hud" hidden>
+  <div id="floaters"></div>
+  <div id="topleft">
+    <div id="scorecard" class="card">
+      <div class="stat"><span class="lbl">Renown</span><b id="score">0</b></div>
+      <div class="stat"><span class="lbl">Tiles</span><b id="supply">0</b></div>
+    </div>
+    <div id="charters"></div>
+  </div>
+
+  <div id="topright">
+    <button class="icon" id="bUndo" title="Undo (Z)" aria-label="Undo">↶</button>
+    <button class="icon" id="bCenter" title="Center the view (C)" aria-label="Center the view">⌖</button>
+    <button class="icon" id="bHelp" title="How to play (H)" aria-label="How to play">?</button>
+    <button class="icon" id="bMenu" title="Menu" aria-label="Menu">☰</button>
+  </div>
+
+  <div id="hand">
+    <button class="rot" id="bRotL" title="Turn left (Shift+R)" aria-label="Turn left">⟲</button>
+    <div class="current">
+      <canvas id="thumb0" width="192" height="192"></canvas>
+      <button id="bPlace" hidden>Place</button>
+    </div>
+    <button class="rot" id="bRotR" title="Turn right (R / right click)" aria-label="Turn right">⟳</button>
+    <div class="next">
+      <canvas id="thumb1" width="96" height="96"></canvas>
+      <canvas id="thumb2" width="96" height="96"></canvas>
+      <button id="bDiscard" title="Throw this tile away (X)">Discard</button>
+    </div>
+  </div>
+
+  <div id="tip" hidden></div>
+  <div id="toasts"></div>
+</div>
+
+<div id="help" class="overlay" hidden>
+  <div class="sheet">
+    <h1>OpenDorf</h1>
+    <p class="lead">Grow a medieval realm one hex tile at a time.</p>
+    <ol>
+      <li><b>Lay tiles</b> next to your realm. Roads, rivers and coastlines must line up: a road can't run into a field, and the sea can only meet the sea or a river mouth.</li>
+      <li><b>Houses put their land to work.</b> A house next to a forest becomes a <i>lumbermill</i>, next to fields a <i>windmill</i>, by a river a <i>watermill</i>, under a mountain a <i>mine</i>, and by the sea a <i>watchtower</i>. Bigger forests, fields, rivers and seas feed more of them.</li>
+      <li><b>Villages grow.</b> Three houses together dig a <i>well</i>. Then come a <i>tavern</i> (5), a <i>market</i> (7), a <i>church</i> (10) and finally a <i>castle</i> (14). A village with a lumbermill and a mine gets a <i>blacksmith</i>.</li>
+      <li><b>Every building and royal charter brings new tiles.</b> When the last tile is laid, your realm is complete.</li>
+    </ol>
+    <div class="controls">
+      <div><b>Mouse</b> · click to lay · <kbd>R</kbd> or right click to turn · drag to move · right drag to rotate the view · wheel to zoom</div>
+      <div><b>Touch</b> · tap a spot, tap again to lay · ⟲ ⟳ to turn · drag, pinch and twist the view</div>
+      <div><b>Keys</b> · <kbd>Z</kbd> undo · <kbd>X</kbd> discard · <kbd>C</kbd> center · <kbd>Q</kbd>/<kbd>E</kbd> rotate the view · <kbd>WASD</kbd> move</div>
+    </div>
+    <button class="btn" id="bHelpClose">Start building</button>
+    <p class="credits">Models: KayKit Medieval Hexagon Pack by Kay Lousberg (CC0). Code: GPL-3.0.</p>
+  </div>
+</div>
+
+<div id="menu" class="overlay" hidden>
+  <div class="sheet small">
+    <h2>Realm</h2>
+    <p>Seed <code id="seedLabel"></code></p>
+    <button class="btn" id="bNew">New realm</button>
+    <button class="btn alt" id="bDaily">Today's realm</button>
+    <button class="btn alt" id="bRestart">Restart this realm</button>
+    <button class="btn alt" id="bShare">Copy link to this realm</button>
+    <p class="best">Best renown: <b id="best">0</b></p>
+    <button class="btn ghost" id="bMenuClose">Back</button>
+  </div>
+</div>
+
+<div id="over" class="overlay" hidden>
+  <div class="sheet small">
+    <h2>The realm is complete</h2>
+    <div class="final"><span id="finalScore">0</span><small>renown</small></div>
+    <p id="finalBest"></p>
+    <ul id="finalStats"></ul>
+    <button class="btn" id="bOverNew">New realm</button>
+    <button class="btn alt" id="bOverRestart">Play this seed again</button>
+    <button class="btn ghost" id="bOverLook">Look at the realm</button>
+  </div>
+</div>
+
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

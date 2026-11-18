@@ -1,0 +1,76 @@
+# OpenDorf
+
+A calm tile-laying game for the browser. You grow a medieval realm one hex tile at a time:
+lay forests, fields, villages, roads, rivers and coastline, and watch the houses put the land
+around them to work.
+
+**Play:** https://sirmmo.github.io/opendorf/
+
+## How it plays
+
+1. **Lay tiles** next to your realm. Roads, rivers and coastlines must line up: a road can't
+   run into a field, and the sea can only meet the sea or a river mouth. You see where the
+   current tile fits, and how much renown it would earn, before you lay it.
+2. **Houses put their land to work.** A house next to a forest becomes a lumbermill, next to
+   fields a windmill, by a river a watermill, under a mountain a mine, and by the sea a
+   watchtower. Each forest, field and river feeds one workshop per three tiles, a sea one per
+   four, and every mountain feeds its own mine.
+3. **Villages grow.** Village tiles that touch form a village. Three of them dig a well, then
+   come a tavern (5), a market (7), a church (10) and finally a castle (14). A village with a
+   lumbermill and a mine also gets a blacksmith. Every building needs a free house to stand on,
+   so workshops and town buildings compete for the same houses.
+4. **Royal charters** set three goals at a time (a forest of 8, a road across 6 tiles, a
+   second windmill…).
+5. **Tiles run out.** You start with 40. Every building and every charter brings more. When
+   the last tile is laid, the realm is complete.
+
+Renown per tile: +1 for each neighbour, +2 for each neighbour with the same land, +2 for each
+road or river joined, +1 for each stretch of sea joined. Buildings and charters add their own.
+
+Every realm has a seed. The same seed always deals the same tiles, so you can share a realm
+(menu → *Copy link to this realm*) or play *Today's realm*. The game saves itself after every
+move; the last move can be undone.
+
+## Controls
+
+| | Mouse and keyboard | Touch |
+| --- | --- | --- |
+| Lay a tile | click a glowing spot | tap a spot, then tap it again (or *Place*) |
+| Turn the tile | `R` / right click (`Shift+R` the other way) | ⟲ ⟳ |
+| Move the view | drag, or `WASD` / arrows | drag |
+| Rotate the view | right drag, `Q` / `E` | twist with two fingers |
+| Zoom | wheel, `+` / `-` | pinch |
+| Undo, discard, center | `Z`, `X`, `C` | ↶ and ⌖ buttons, *Discard* |
+
+## Development
+
+Plain HTML, CSS and JavaScript modules. No build step and no dependencies at runtime.
+
+```sh
+python3 -m http.server 8000      # then open http://localhost:8000
+npm test                          # rules tests (Node 20+)
+node tools/balance.mjs 1 2 3      # greedy games per seed: length, score, buildings
+```
+
+| Path | What |
+| --- | --- |
+| `js/tiles.js` | Tile edges, the tile bag, buildings, workshop and village rules |
+| `js/rules.js` | The game: pure, seeded and JSON-serialisable (`newGame`, `place`, `preview`, `discard`) |
+| `js/view.js` | three.js board, ghost tile, spots, construction animation, hand thumbnails |
+| `js/main.js` | Input, HUD, saving, undo |
+| `tools/edges.py` | Measures which tile edges carry road, river or sea from the KayKit meshes |
+| `models/` | The subset of the KayKit pack the game uses (glTF + one shared texture) |
+
+The rules never touch the DOM or three.js, so the tests and the balance script run them
+directly in Node.
+
+## Credits
+
+- 3D models: [KayKit Medieval Hexagon Pack](https://kaylousberg.itch.io/kaykit-medieval-hexagon) by
+  Kay Lousberg, CC0.
+- [three.js](https://threejs.org), MIT (`vendor/three-LICENSE.txt`).
+- Fonts: Cinzel and Fredoka from Google Fonts (OFL).
+
+## License
+
+Code: GPL-3.0, see `LICENSE`. Models: CC0.
