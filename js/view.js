@@ -223,6 +223,8 @@ export class View {
     this.camera = new THREE.PerspectiveCamera(40, 1, 0.1, 300);
     this.cam = { target: new THREE.Vector3(), yaw: 0.35, pitch: 0.95, dist: 17 };
     this.camGoal = null;
+    this.shift = 0;
+    this.shiftGoal = 0;
 
     this.scene.add(new THREE.HemisphereLight(0xeaf6ff, 0x7b6a4c, 1.6));
     const sun = new THREE.DirectionalLight(0xfff1d6, 2.6);
@@ -461,7 +463,7 @@ export class View {
       g.traverse((o) => {
         if (!o.isMesh) return;
         o.castShadow = false;
-        o.material = ghostMaterial(o.material, legal);
+        o.material = Array.isArray(o.material) ? o.material.map((m) => ghostMaterial(m, legal)) : ghostMaterial(o.material, legal);
       });
       g.renderOrder = 2;
       this.ghost = g;
@@ -482,6 +484,22 @@ export class View {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.fov = w < h ? 55 : 40;
+    this.applyShift();
+  }
+
+  // On a tall screen the HUD covers the top and the bottom: keep the scene centred in the
+  // space between them by shifting the projection (picking follows, it uses the same matrix).
+  setInsets(top, bottom) {
+    this.insets = { top, bottom };
+    const tall = window.innerWidth < window.innerHeight;
+    this.shiftGoal = tall ? (top - bottom) / 2 : 0;
+  }
+
+  applyShift() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    if (Math.abs(this.shift) > 0.5) this.camera.setViewOffset(w, h, 0, -this.shift, w, h);
+    else this.camera.clearViewOffset();
     this.camera.updateProjectionMatrix();
   }
 
@@ -496,6 +514,9 @@ export class View {
       c.target.z + Math.cos(c.yaw) * cp * c.dist,
     );
     this.camera.lookAt(c.target);
+    // Fog stays behind what is in view, however far out the camera is.
+    this.scene.fog.near = Math.max(40, c.dist + 25);
+    this.scene.fog.far = this.scene.fog.near + 55;
     this.sun.position.set(c.target.x + 14, 26, c.target.z + 9);
     this.sun.target.position.copy(c.target);
   }
@@ -519,16 +540,57 @@ export class View {
     return { x: (p.x + 1) / 2 * window.innerWidth, y: (1 - p.y) / 2 * window.innerHeight, behind: p.z > 1 };
   }
 
-  // Glide the camera to look at the middle of the realm.
+  // Glide the camera to look at the middle of the realm, close enough to fill the screen.
   frame(state) {
     const ts = Object.values(state.tiles);
     const c = new THREE.Vector3();
     for (const t of ts) c.add(hexToWorld(t.q, t.r));
     c.divideScalar(ts.length || 1);
-    let far = 0;
-    for (const t of ts) far = Math.max(far, hexToWorld(t.q, t.r).distanceTo(c));
-    this.camGoal = { target: c, dist: Math.max(13, far * 2.1 + 8) };
+    const R = 2 / Math.sqrt(3);
+    const points = [];
+    for (const t of ts) {
+      const m = hexToWorld(t.q, t.r);
+      for (let k = 0; k < 6; k++) {
+        const a = (k * Math.PI) / 3 + Math.PI / 6;
+        for (const h of [0, 0.6]) points.push(new THREE.Vector3(m.x + Math.cos(a) * R, h, m.z + Math.sin(a) * R));
+      }
+    }
+    this.camGoal = { target: c, dist: this.fitDistance(c, points, 13, 60) };
   }
+
+  // The camera distance at which every point fits on screen, between the HUD bars on a tall
+  // screen, seen from the current angle.
+  fitDistance(target, points, min, max) {
+    const keep = { target: this.cam.target.clone(), dist: this.cam.dist, shift: this.shift };
+    const h = window.innerHeight;
+    const tall = window.innerWidth < h && this.insets;
+    const top = tall ? 1 - (2 * (this.insets.top + 10)) / h : 0.88;
+    const bottom = tall ? -1 + (2 * (this.insets.bottom + 10)) / h : -0.88;
+    this.shift = this.shiftGoal;
+    this.applyShift();
+    const v = new THREE.Vector3();
+    const fits = (d) => {
+      this.cam.target.copy(target);
+      this.cam.dist = d;
+      this.updateCamera();
+      this.camera.updateMatrixWorld();
+      return points.every((p) => {
+        v.copy(p).project(this.camera);
+        return v.z < 1 && Math.abs(v.x) <= 0.92 && v.y <= top && v.y >= bottom;
+      });
+    };
+    let lo = min;
+    let hi = max;
+    if (fits(lo)) hi = lo;
+    else for (let i = 0; i < 20; i++) { const m = (lo + hi) / 2; if (fits(m)) hi = m; else lo = m; }
+    this.cam.target.copy(keep.target);
+    this.cam.dist = keep.dist;
+    this.shift = keep.shift;
+    this.applyShift();
+    this.updateCamera();
+    return hi;
+  }
+
 
   // ---------- frame loop ----------
 
@@ -544,6 +606,11 @@ export class View {
         a.fn(k);
         return k < 1;
       });
+      if (this.shift !== this.shiftGoal) {
+        const d = this.shiftGoal - this.shift;
+        this.shift = Math.abs(d) < 0.5 ? this.shiftGoal : this.shift + d * (1 - Math.exp(-dt * 8));
+        this.applyShift();
+      }
       if (this.camGoal) {
         const g = this.camGoal;
         const f = 1 - Math.exp(-dt * 5);

@@ -157,15 +157,34 @@ code { background: var(--paper-2); padding: 1px 6px; border-radius: 5px; }
 #finalStats { list-style: none; padding: 0; margin: 10px 0; font-weight: 600; line-height: 1.6; }
 
 @media (max-width: 720px) {
-  #topleft { width: auto; right: calc(12px + var(--safe-r) + 112px); }
-  #scorecard { padding: 6px 10px; gap: 12px; }
+  #topleft { width: auto; right: calc(12px + var(--safe-r) + 104px); top: calc(8px + var(--safe-t)); left: calc(8px + var(--safe-l)); gap: 6px; }
+  #topright { top: calc(8px + var(--safe-t)); right: calc(8px + var(--safe-r)); display: grid; grid-template-columns: repeat(2, 42px); gap: 6px; }
+  #scorecard { padding: 5px 10px; gap: 12px; }
   .stat b { font-size: 22px; }
   .stat .lbl { font-size: 10px; }
-  #topright { display: grid; grid-template-columns: repeat(2, 42px); gap: 6px; }
   .icon { width: 42px; height: 42px; font-size: 19px; }
-  .charter { padding: 5px 9px 6px; font-size: 12px; max-width: 250px; }
+  /* Quests as one compact list: a line of text with the reward beside it, a thin bar below. */
+  #charters { gap: 0; max-width: 270px; background: var(--paper); border: 3px solid var(--ink); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+  #charters:empty { display: none; }
+  .charter {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 6px; align-items: baseline;
+    padding: 4px 8px 5px; font-size: 12px; border: 0; border-radius: 0; box-shadow: none;
+  }
+  .charter + .charter { border-top: 1px solid var(--paper-2); }
+  .charter .head { display: contents; }
   .charter .seal { display: none; }
-  .charter .prog { margin-top: 4px; height: 5px; }
-  #hand .current { width: 112px; height: 112px; }
-  #thumb0 { width: 104px; height: 104px; }
+  .charter .reward { grid-column: 2; grid-row: 1; font-size: 10px; }
+  .charter .txt { grid-column: 1; grid-row: 1; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .charter .prog { grid-column: 1 / -1; grid-row: 2; margin-top: 3px; height: 4px; }
+  /* A smaller tray. */
+  #hand { bottom: calc(8px + var(--safe-b)); gap: 8px; }
+  #hand .current { width: 92px; height: 92px; border-width: 3px; }
+  #thumb0 { width: 86px; height: 86px; }
+  #hand .rot { width: 46px; height: 46px; font-size: 24px; margin-bottom: 4px; }
+  #hand .next canvas { width: 46px; height: 46px; }
+  #thumb2 { width: 38px !important; height: 38px !important; }
+  #bDiscard { font-size: 11px; padding: 1px 6px; }
+  #bPlace { top: -14px; padding: 2px 12px; font-size: 14px; }
+  #toasts { top: calc(56px + var(--safe-t)); }
+  .toast { font-size: 14px; padding: 5px 12px; }
 }
