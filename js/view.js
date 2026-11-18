@@ -10,6 +10,44 @@ import { edgeAt, groups, key, neighbours, tileAt } from './rules.js';
 const SQ3 = Math.sqrt(3);
 const TAU = Math.PI * 2;
 const STEP = Math.PI / 3;
+// Fields: the KayKit field stops short of the tile edge with a ragged rim. A flat bed in the
+// same straw colour sits under it and runs to the edge wherever the neighbour is a field too,
+// so neighbouring fields read as one; elsewhere it tucks in under the model's own rim.
+const BED_HEIGHT = 0.2;
+const BED_INSET = 0.1;
+const bedGeos = new Map();
+function fieldBed(mask) {
+  if (bedGeos.has(mask)) return bedGeos.get(mask);
+  const inset = (k) => (mask & (1 << k) ? 0 : BED_INSET);
+  const corner = (c) => {
+    const a = c * STEP;
+    const b = (c + 1) * STEP;
+    const r1 = 1 - inset(c);
+    const r2 = 1 - inset((c + 1) % 6);
+    const det = Math.sin(b - a);
+    return [(r1 * Math.sin(b) - r2 * Math.sin(a)) / det, (r2 * Math.cos(a) - r1 * Math.cos(b)) / det];
+  };
+  const pts = [0, 1, 2, 3, 4, 5].map(corner);
+  const top = [];
+  const side = [];
+  for (let c = 0; c < 6; c++) {
+    const [x1, z1] = pts[(c + 5) % 6];
+    const [x2, z2] = pts[c];
+    top.push(0, BED_HEIGHT, 0, x2, BED_HEIGHT, z2, x1, BED_HEIGHT, z1);
+    side.push(x1, BED_HEIGHT, z1, x2, BED_HEIGHT, z2, x2, 0.01, z2, x1, BED_HEIGHT, z1, x2, 0.01, z2, x1, 0.01, z1);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute([...top, ...side], 3));
+  geo.addGroup(0, top.length / 3, 0);
+  geo.addGroup(top.length / 3, side.length / 3, 1);
+  geo.computeVertexNormals();
+  bedGeos.set(mask, geo);
+  return geo;
+}
+const bedMats = [
+  new THREE.MeshStandardMaterial({ color: 0xe6b555, roughness: 0.9, side: THREE.DoubleSide }),
+  new THREE.MeshStandardMaterial({ color: 0xb9823c, roughness: 0.9, side: THREE.DoubleSide }),
+];
 
 export function hexToWorld(q, r) {
   return new THREE.Vector3(2 * q + r, 0, SQ3 * r);
@@ -291,6 +329,15 @@ export class View {
       if (d.s) m.scale.setScalar(d.s);
       top.add(m);
     }
+    if (tile.feature === 'field') {
+      // info.fields: bit k set when the neighbour across world edge k is a field.
+      // The group turns by -rot, so local edge j faces world edge j + rot.
+      let local = 0;
+      for (let j = 0; j < 6; j++) if ((info.fields || 0) & (1 << ((j + tile.rot) % 6))) local |= 1 << j;
+      const bed = new THREE.Mesh(fieldBed(local), bedMats);
+      bed.receiveShadow = true;
+      top.add(bed);
+    }
     g.add(top);
     g.userData.top = top;
     // Base meshes turn with the tile; features are laid out in tile space for grass, but roads,
@@ -306,9 +353,12 @@ export class View {
     const seen = new Set();
     for (const [k, t] of Object.entries(state.tiles)) {
       seen.add(k);
-      const info = { forest: forest.get(k), facing: t.building ? facing(state, t) : null };
+      const info = { forest: forest.get(k), facing: t.building ? facing(state, t) : null, fields: 0 };
+      if (t.feature === 'field') {
+        for (const n of neighbours(t.q, t.r)) if (tileAt(state, n.q, n.r)?.feature === 'field') info.fields |= 1 << n.k;
+      }
       const fClass = t.feature === 'forest' ? (info.forest >= 5 ? 3 : info.forest >= 2 ? 2 : 1) : 0;
-      const vis = [t.base, t.rot, t.feature, t.building, fClass, info.facing].join('|');
+      const vis = [t.base, t.rot, t.feature, t.building, fClass, info.facing, info.fields].join('|');
       const cur = this.views.get(k);
       if (cur && cur.vis === vis) continue;
       const g = this.tileGroup(t, info);

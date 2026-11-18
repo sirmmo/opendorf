@@ -1,6 +1,7 @@
 import { View } from './view.js';
 import * as R from './rules.js';
 import { BUILDINGS } from './tiles.js';
+import { toGeoJSON } from './geojson.js';
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -480,6 +481,21 @@ $('bShare').onclick = async () => {
     toast(u.href);
   }
 };
+// Map export. ?origin=lon,lat places the realm on the globe (default 0,0).
+function downloadGeo() {
+  const o = (new URLSearchParams(location.search).get('origin') || '').split(',').map(Number);
+  const origin = o.length === 2 && o.every(Number.isFinite) ? o : [0, 0];
+  const blob = new Blob([JSON.stringify(toGeoJSON(state, { origin }))], { type: 'application/geo+json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `opendorf-${state.seed}.geojson`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+$('bGeo').onclick = downloadGeo;
+$('bOverGeo').onclick = downloadGeo;
 $('bOverNew').onclick = () => startGame(randomSeed());
 $('bOverRestart').onclick = () => startGame(state.seed);
 $('bOverLook').onclick = () => { $('over').hidden = true; view.frame(state); };

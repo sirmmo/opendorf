@@ -32,6 +32,22 @@ Every realm has a seed. The same seed always deals the same tiles, so you can sh
 (menu → *Copy link to this realm*) or play *Today's realm*. The game saves itself after every
 move; the last move can be undone.
 
+## Map export (GeoJSON)
+
+Menu → *Download map (GeoJSON)* (also on the end screen) saves the realm as a GeoJSON
+FeatureCollection. Each feature has a `layer` property:
+
+| `layer` | Geometry | What |
+| --- | --- | --- |
+| `realm` | (Multi)Polygon | Outline of the whole realm |
+| `area` | (Multi)Polygon | Each forest, farmland, village, mountain range and sea, merged (`kind`, `tiles`) |
+| `road`, `waterway` | MultiLineString | Each road and river network |
+| `building` | Point | Workshops, town buildings and houses (`building`, `name`) |
+| `tile` | Polygon | Every tile: `q`, `r`, `base`, `model`, `rotation`, `edges`, `feature`, `building`, `order` |
+
+The realm's centre tile sits at longitude/latitude 0, 0 and a tile is 100 m across. To put it
+somewhere else, open the game with `?origin=lon,lat` (for example `?origin=11.3426,44.4949`).
+
 ## Controls
 
 | | Mouse and keyboard | Touch |
@@ -58,7 +74,8 @@ node tools/balance.mjs 1 2 3      # greedy games per seed: length, score, buildi
 | `js/tiles.js` | Tile edges, the tile bag, buildings, workshop and village rules |
 | `js/rules.js` | The game: pure, seeded and JSON-serialisable (`newGame`, `place`, `preview`, `discard`) |
 | `js/view.js` | three.js board, ghost tile, spots, construction animation, hand thumbnails |
-| `js/main.js` | Input, HUD, saving, undo |
+| `js/geojson.js`, `js/geo.js` | GeoJSON export: projection and merging tiles into outlines |
+| `js/main.js` | Input, HUD, saving, undo, map download |
 | `tools/edges.py`, `tools/heights.py` | Measure which tile edges carry road, river or sea, and the height of each corner, from the KayKit meshes |
 | `models/` | The subset of the KayKit pack the game uses (glTF + one shared texture) |
 
