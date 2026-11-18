@@ -126,6 +126,31 @@ export const CIVIC = [
   { building: 'castle', size: 14 },
 ];
 
+// Which edges may touch. Roads and rivers must carry on; land may meet the sea as a low cliff
+// (the sea sits 0.2 below the grass, as in the KayKit sample scenes); a river may fall into
+// the sea.
 export function compatible(a, b) {
-  return a === b || (a === 'W' && b === 'S') || (a === 'S' && b === 'W');
+  if (a === b) return true;
+  const pair = a < b ? a + b : b + a;
+  return pair === 'LS' || pair === 'SW';
+}
+
+// Corners: corner c sits between edge c and edge c+1 (angle 60c+30).
+//   d  dry land at grass height
+//   w  open water (both edges are sea): flat, so it can meet a cliff
+//   b  beach: sand sloping down to the sea between a land and a sea edge. A beach corner must
+//      meet another beach or open water, or the sand ends in a notch in the next tile.
+// Measured on the meshes with tools/heights.py: they follow from the edges.
+export function cornersOf(edges) {
+  let out = '';
+  for (let c = 0; c < 6; c++) {
+    const n = (edges[c] === 'S') + (edges[(c + 1) % 6] === 'S');
+    out += n === 2 ? 'w' : n === 1 ? 'b' : 'd';
+  }
+  return out;
+}
+for (const b of Object.values(BASES)) b.corners = cornersOf(b.edges);
+
+export function cornersAgree(a, b) {
+  return !((a === 'b' && b === 'd') || (a === 'd' && b === 'b'));
 }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  newGame, place, discard, preview, legalSpots, canPlace, edgeAt, groups, key, START_SUPPLY,
+  newGame, place, discard, preview, legalSpots, canPlace, edgeAt, fits, groups, key, START_SUPPLY,
 } from '../js/rules.js';
 import { BASES, BAG } from '../js/tiles.js';
 
@@ -67,11 +67,26 @@ test('roads cannot be cut and must touch the realm', () => {
   assert.equal(canPlace(s, road, 1, 0, 0), false);
   // Rotated so the road points away, it fits.
   assert.equal(canPlace(s, road, 1, 0, 3), true);
-  // Water next to grass is never legal.
-  assert.equal(canPlace(s, { base: 'water' }, 1, 0, 0), false);
+  // Open water may sit next to grass, as a low cliff.
+  assert.equal(canPlace(s, { base: 'water' }, 1, 0, 0), true);
   // A river may run into the sea.
   s.tiles[key(1, 0)] = { id: 99, q: 1, r: 0, rot: 0, base: 'water' };
   assert.equal(canPlace(s, { base: 'river_A' }, 2, 0, 0), true);
+});
+
+test('beaches must run on into beach or open water', () => {
+  const s = newGame('beach');
+  // coast_A at rot 0: sea on edge 1, beach corners 0 and 1. East of the hearth (1,0) its
+  // edge 3 faces the hearth, and corners 2 and 3 (both dry) meet it: fine.
+  assert.equal(canPlace(s, { base: 'coast_A' }, 1, 0, 0), true);
+  // Turned so the beach corner 2 touches the hearth's grass corner: not allowed.
+  assert.equal(canPlace(s, { base: 'coast_A' }, 1, 0, 1), false);
+  // Turned so the sea edge faces the hearth: sea against grass is a cliff, but its two beach
+  // corners would end in the grass.
+  assert.equal(canPlace(s, { base: 'coast_A' }, 1, 0, 2), false);
+  // Next to open water, the beach is fine on either side.
+  s.tiles[key(1, 0)] = { id: 99, q: 1, r: 0, rot: 0, base: 'water' };
+  assert.equal(canPlace(s, { base: 'coast_A' }, 2, 0, 2), true);
 });
 
 test('a forest next to a house raises a lumbermill', () => {
@@ -130,9 +145,7 @@ test('games end, and the state survives JSON', () => {
         const [dq, dr] = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]][k];
         const o = s.tiles[key(t.q + dq, t.r + dr)];
         if (!o) continue;
-        const a = edgeAt(t, k);
-        const b = edgeAt(o, (k + 3) % 6);
-        assert.ok(a === b || (a + b === 'WS') || (a + b === 'SW'), `${a}/${b}`);
+        assert.ok(fits(t, o, k), `${t.base}/${o.base} edge ${k}`);
       }
     }
   }

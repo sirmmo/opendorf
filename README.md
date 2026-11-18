@@ -8,9 +8,10 @@ around them to work.
 
 ## How it plays
 
-1. **Lay tiles** next to your realm. Roads, rivers and coastlines must line up: a road can't
-   run into a field, and the sea can only meet the sea or a river mouth. You see where the
-   current tile fits, and how much renown it would earn, before you lay it.
+1. **Lay tiles** next to your realm. Roads and rivers must carry on, and a beach must run on
+   into more beach or open water (edges and corners both have to agree). Land may meet the sea
+   as a low cliff, and rivers may flow into the sea. You see where the current tile fits, and
+   how much renown it would earn, before you lay it.
 2. **Houses put their land to work.** A house next to a forest becomes a lumbermill, next to
    fields a windmill, by a river a watermill, under a mountain a mine, and by the sea a
    watchtower. Each forest, field and river feeds one workshop per three tiles, a sea one per
@@ -58,7 +59,7 @@ node tools/balance.mjs 1 2 3      # greedy games per seed: length, score, buildi
 | `js/rules.js` | The game: pure, seeded and JSON-serialisable (`newGame`, `place`, `preview`, `discard`) |
 | `js/view.js` | three.js board, ghost tile, spots, construction animation, hand thumbnails |
 | `js/main.js` | Input, HUD, saving, undo |
-| `tools/edges.py` | Measures which tile edges carry road, river or sea from the KayKit meshes |
+| `tools/edges.py`, `tools/heights.py` | Measure which tile edges carry road, river or sea, and the height of each corner, from the KayKit meshes |
 | `models/` | The subset of the KayKit pack the game uses (glTF + one shared texture) |
 
 The rules never touch the DOM or three.js, so the tests and the balance script run them

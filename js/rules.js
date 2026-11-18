@@ -2,7 +2,7 @@
 // random choice comes from the seeded generator stored inside it, so a seed always plays out
 // the same way and a game can be saved, restored and undone by copying the object.
 
-import { BASES, BAG, BUILDINGS, WORKSHOPS, CIVIC, compatible } from './tiles.js';
+import { BASES, BAG, BUILDINGS, WORKSHOPS, CIVIC, compatible, cornersAgree } from './tiles.js';
 
 export const DIRS = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]];
 export const START_SUPPLY = 40;
@@ -39,6 +39,19 @@ export function edgeAt(tile, k) {
   return BASES[tile.base].edges[(((k - tile.rot) % 6) + 6) % 6];
 }
 
+export function cornerAt(tile, c) {
+  return BASES[tile.base].corners[(((c - tile.rot) % 6) + 6) % 6];
+}
+
+// Do two tiles fit along edge k of `a` (b being the neighbour across it)?
+// The edge must match, and so must the two corners the tiles share: a's corner k meets
+// b's corner k+2, and a's corner k-1 meets b's corner k+3.
+export function fits(a, b, k) {
+  if (!compatible(edgeAt(a, k), edgeAt(b, (k + 3) % 6))) return false;
+  return cornersAgree(cornerAt(a, k), cornerAt(b, (k + 2) % 6))
+    && cornersAgree(cornerAt(a, (k + 5) % 6), cornerAt(b, (k + 3) % 6));
+}
+
 export function neighbours(q, r) {
   return DIRS.map(([dq, dr], k) => ({ q: q + dq, r: r + dr, k }));
 }
@@ -55,7 +68,7 @@ export function canPlace(state, piece, q, r, rot) {
     const other = tileAt(state, n.q, n.r);
     if (!other) continue;
     touching++;
-    if (!compatible(edgeAt(t, n.k), edgeAt(other, (n.k + 3) % 6))) return false;
+    if (!fits(t, other, n.k)) return false;
   }
   return touching > 0;
 }
@@ -222,7 +235,7 @@ export function place(state, q, r, rot) {
     if (t.feature && t.feature !== 'meadow' && o.feature === t.feature) pts += 2;
     const e = edgeAt(t, n.k);
     if (e === 'R' || e === 'W') pts += 2;
-    else if (e === 'S') pts += 1;
+    else if (e === 'S' && edgeAt(o, (n.k + 3) % 6) === 'S') pts += 1;
   }
   state.score += pts;
   events.push({ type: 'place', q, r, pts });
