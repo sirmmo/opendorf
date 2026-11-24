@@ -94,6 +94,50 @@ export const BAG = [
   { base: 'coast_D', w: 0.8 },
 ];
 
+// Every tile there is, for the sandbox palette, in groups: land (each feature, then plain grass),
+// roads, rivers (with fords), and the sea and its coasts.
+function groupOf(base) {
+  const e = BASES[base].edges;
+  if (e.includes('W')) return 'river';
+  if (e.includes('R')) return 'road';
+  if (e.includes('S')) return 'sea';
+  return 'land';
+}
+// Roads and rivers from the fewest ways to the most, fords last.
+function ways(base) {
+  return base.startsWith('ford') ? 9 : [...BASES[base].edges].filter((x) => x === 'R' || x === 'W').length;
+}
+export const PALETTE_GROUPS = ['land', 'road', 'river', 'sea'];
+export const PALETTE = [
+  ...FEATURES.map((feature) => ({ base: 'grass', feature, group: 'land' })),
+  { base: 'grass', group: 'land' },
+  ...PALETTE_GROUPS.slice(1).flatMap((g) =>
+    Object.keys(BASES).filter((b) => groupOf(b) === g).sort((x, y) => ways(x) - ways(y)).map((base) => ({ base, group: g }))),
+];
+
+// A short name for a tile kind, e.g. "Forest", "Road, bend", "River, 3 ways", "Coast, sea on 2 sides".
+export function tileName(kind) {
+  if (kind.feature) return kind.feature[0].toUpperCase() + kind.feature.slice(1);
+  const e = BASES[kind.base].edges;
+  const count = (c) => [...e].filter((x) => x === c).length;
+  const shape = (c) => {
+    const at = [...e].map((x, i) => (x === c ? i : -1)).filter((i) => i >= 0);
+    if (at.length === 1) return 'end';
+    if (at.length === 2) {
+      const d = at[1] - at[0];
+      return d === 3 ? 'straight' : d === 1 || d === 5 ? 'sharp bend' : 'bend';
+    }
+    return `${at.length} ways`;
+  };
+  if (kind.base === 'grass') return 'Grass';
+  if (kind.base === 'water') return 'Open sea';
+  if (kind.base.startsWith('ford')) return 'Ford';
+  if (count('W')) return `River, ${kind.base.endsWith('curvy') ? 'winding' : shape('W')}`;
+  if (count('R')) return `Road, ${shape('R')}`;
+  const n = count('S');
+  return `Coast, sea on ${n} side${n > 1 ? 's' : ''}`;
+}
+
 export const BUILDINGS = {
   lumbermill: { name: 'Lumbermill', pts: 10, tiles: 2, model: 'building_lumbermill_blue' },
   windmill: { name: 'Windmill', pts: 10, tiles: 2, model: 'building_windmill_blue' },

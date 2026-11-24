@@ -54,6 +54,10 @@ kbd { background: #fff; border: 1px solid #c9b48a; border-bottom-width: 2px; bor
 .stat b.bump { animation: bump .45s; }
 @keyframes bump { 30% { transform: scale(1.25); color: var(--blue-dark); } }
 #supply.low { color: #c0392b; }
+#scorecard .tag {
+  align-self: center; background: var(--gold); border: 2px solid var(--ink); border-radius: 8px; padding: 2px 8px;
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px;
+}
 
 #charters { display: flex; flex-direction: column; gap: 8px; }
 .charter { padding: 8px 12px 9px; font-size: 14px; font-weight: 600; position: relative; }
@@ -100,6 +104,31 @@ kbd { background: #fff; border: 1px solid #c9b48a; border-bottom-width: 2px; bor
   position: absolute; left: 50%; top: -18px; transform: translateX(-50%); background: var(--green); color: #fff; border: 3px solid var(--ink);
   border-radius: 12px; font-weight: 700; padding: 4px 16px; box-shadow: var(--shadow);
 }
+
+/* sandbox: the palette of every tile, instead of the next tiles */
+body.sandbox .normal-only, body:not(.sandbox) .sandbox-only { display: none !important; }
+body.sandbox #hand .next { display: none; }
+#palette {
+  position: absolute; top: calc(72px + var(--safe-t)); right: calc(12px + var(--safe-r)); width: 238px; padding: 8px 10px 10px;
+  max-height: calc(100dvh - 84px - var(--safe-t) - var(--safe-b)); overflow-y: auto;
+}
+.pal-head { display: flex; flex-direction: column; line-height: 1.2; margin-bottom: 6px; }
+.pal-head .seal { font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--ink-soft); font-weight: 600; }
+.pal-head b { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pal-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+.pal-tabs button {
+  flex: 1; border: 2px solid var(--ink); border-radius: 8px; background: var(--paper-2); font-size: 13px; font-weight: 600; padding: 2px 0;
+}
+.pal-tabs button[aria-selected="true"] { background: var(--blue); color: #fff; }
+.pal-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.pal-grid button {
+  width: 100%; aspect-ratio: 1; padding: 0; border-radius: 50%; border: 2px solid var(--ink); background: rgba(255, 250, 240, .9);
+  display: flex; align-items: center; justify-content: center;
+}
+.pal-grid button:hover { background: #fff; }
+.pal-grid button:active { transform: translateY(2px); }
+.pal-grid button.on { border: 3px solid var(--blue-dark); background: #fff3c4; box-shadow: 0 0 0 2px var(--gold); }
+.pal-grid canvas { width: 100%; height: 100%; pointer-events: none; }
 
 /* tip next to the ghost */
 #tip {
@@ -186,5 +215,21 @@ code { background: var(--paper-2); padding: 1px 6px; border-radius: 5px; }
   #bDiscard { font-size: 11px; padding: 1px 6px; }
   #bPlace { top: -14px; padding: 2px 12px; font-size: 14px; }
   #toasts { top: calc(56px + var(--safe-t)); }
+  /* The palette becomes a strip above the tray: tabs, then one row to swipe through. */
+  #palette {
+    top: auto; bottom: calc(118px + var(--safe-b)); left: calc(8px + var(--safe-l)); right: calc(8px + var(--safe-r)); width: auto;
+    max-height: none; overflow: visible; padding: 5px 8px 6px;
+  }
+  .pal-head { flex-direction: row; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+  .pal-head .seal { font-size: 10px; }
+  .pal-head b { font-size: 13px; }
+  .pal-tabs { margin-bottom: 5px; }
+  .pal-tabs button { font-size: 12px; padding: 1px 0; }
+  .pal-grid {
+    display: flex; gap: 6px; overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x; scrollbar-width: none;
+    padding: 2px 1px 3px; margin: -2px -1px -3px;
+  }
+  .pal-grid::-webkit-scrollbar { display: none; }
+  .pal-grid button { flex: 0 0 46px; width: 46px; height: 46px; }
   .toast { font-size: 14px; padding: 5px 12px; }
 }

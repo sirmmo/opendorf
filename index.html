@@ -21,6 +21,7 @@
     <div id="scorecard" class="card">
       <div class="stat"><span class="lbl">Renown</span><b id="score">0</b></div>
       <div class="stat"><span class="lbl">Tiles</span><b id="supply">0</b></div>
+      <span class="tag" id="modeTag" hidden title="Sandbox: you choose every tile">Sandbox</span>
     </div>
     <div id="charters"></div>
   </div>
@@ -46,6 +47,12 @@
     </div>
   </div>
 
+  <div id="palette" class="card" hidden>
+    <div class="pal-head"><span class="seal">Choose a tile</span><b id="palName"></b></div>
+    <div class="pal-tabs" id="palTabs" role="tablist"></div>
+    <div class="pal-grid" id="palGrid"></div>
+  </div>
+
   <div id="tip" hidden></div>
   <div id="toasts"></div>
 </div>
@@ -64,6 +71,7 @@
       <div><b>Mouse</b> · click to lay · <kbd>R</kbd> or right click to turn · drag to move · right drag to rotate the view · wheel to zoom</div>
       <div><b>Touch</b> · tap a spot, tap again to lay · ⟲ ⟳ to turn · drag, pinch and twist the view</div>
       <div><b>Keys</b> · <kbd>Z</kbd> undo · <kbd>X</kbd> discard · <kbd>C</kbd> center · <kbd>Q</kbd>/<kbd>E</kbd> rotate the view · <kbd>WASD</kbd> move</div>
+      <div><b>Sandbox</b> · menu → <i>Sandbox</i> to choose every tile yourself, with no end · <kbd>T</kbd> next tile</div>
     </div>
     <button class="btn" id="bHelpClose">Start building</button>
     <p class="credits">Models: KayKit Medieval Hexagon Pack by Kay Lousberg (CC0). Code: GPL-3.0.</p>
@@ -72,14 +80,18 @@
 
 <div id="menu" class="overlay" hidden>
   <div class="sheet small">
-    <h2>Realm</h2>
-    <p>Seed <code id="seedLabel"></code></p>
-    <button class="btn" id="bNew">New realm</button>
-    <button class="btn alt" id="bDaily">Today's realm</button>
-    <button class="btn alt" id="bRestart">Restart this realm</button>
-    <button class="btn alt" id="bShare">Copy link to this realm</button>
+    <h2 id="menuTitle">Realm</h2>
+    <p class="normal-only">Seed <code id="seedLabel"></code></p>
+    <p class="sandbox-only">You choose every tile, and the realm never ends.</p>
+    <button class="btn normal-only" id="bNew">New realm</button>
+    <button class="btn alt normal-only" id="bDaily">Today's realm</button>
+    <button class="btn alt normal-only" id="bRestart">Restart this realm</button>
+    <button class="btn alt normal-only" id="bShare">Copy link to this realm</button>
+    <button class="btn alt normal-only" id="bSandbox">Sandbox (choose every tile)</button>
+    <button class="btn sandbox-only" id="bLeave">Back to my realm</button>
+    <button class="btn alt sandbox-only" id="bNewSandbox">New sandbox realm</button>
     <button class="btn alt" id="bGeo">Download map (GeoJSON)</button>
-    <p class="best">Best renown: <b id="best">0</b></p>
+    <p class="best normal-only">Best renown: <b id="best">0</b></p>
     <button class="btn ghost" id="bMenuClose">Back</button>
   </div>
 </div>

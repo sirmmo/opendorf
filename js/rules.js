@@ -1,8 +1,12 @@
 // OpenDorf rules. Pure and deterministic: the whole game is a plain JSON object and every
 // random choice comes from the seeded generator stored inside it, so a seed always plays out
 // the same way and a game can be saved, restored and undone by copying the object.
+//
+// Two modes: 'normal' deals tiles from a seeded bag until the supply runs out; 'sandbox' lets
+// the player choose every tile (`choose`), never runs out and never ends. Everything else
+// (fitting, renown, buildings, charters) is the same in both.
 
-import { BASES, BAG, BUILDINGS, WORKSHOPS, CIVIC, compatible, cornersAgree } from './tiles.js';
+import { BASES, BAG, BUILDINGS, FEATURES, WORKSHOPS, CIVIC, compatible, cornersAgree } from './tiles.js';
 
 export const DIRS = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]];
 export const START_SUPPLY = 40;
@@ -168,9 +172,17 @@ export function countBuilt(state, building) {
 
 // ---------- new game ----------
 
-export function newGame(seed = String(Date.now() % 1e9)) {
+export const MODES = ['normal', 'sandbox'];
+
+export function isSandbox(state) {
+  return state.mode === 'sandbox';
+}
+
+export function newGame(seed = String(Date.now() % 1e9), { mode = 'normal' } = {}) {
+  if (!MODES.includes(mode)) throw new Error('unknown mode ' + mode);
   const state = {
     version: 1,
+    mode,
     seed: String(seed),
     rng: hashSeed(seed),
     tiles: {},
@@ -185,6 +197,7 @@ export function newGame(seed = String(Date.now() % 1e9)) {
     over: false,
     stats: { placed: 0, discarded: 0, built: 0, charters: 0 },
   };
+  if (mode === 'sandbox') state.choice = { base: 'grass', feature: 'forest' };
   addTile(state, { base: 'grass', feature: 'village', v: 7 }, 0, 0, 0);
   refill(state);
   for (const kind of ['forest', 'road', 'field']) state.charters.push(makeCharter(state, kind));
@@ -198,19 +211,29 @@ function addTile(state, piece, q, r, rot) {
   return t;
 }
 
+// A tile of the given kind ({ base, feature? }), with its own look (`v`).
+function makePiece(state, kind) {
+  const piece = { base: kind.base, v: Math.floor(rand(state) * 1e6) };
+  if (kind.feature) piece.feature = kind.feature;
+  return piece;
+}
+
 function draw(state) {
   // The carts only bring a tile that fits somewhere today, if they can find one in a few tries.
   let piece;
   for (let i = 0; i < 4; i++) {
-    const kind = pick(state, BAG);
-    piece = { base: kind.base, v: Math.floor(rand(state) * 1e6) };
-    if (kind.feature) piece.feature = kind.feature;
+    piece = makePiece(state, pick(state, BAG));
     if (legalSpots(state, piece).length) break;
   }
   return piece;
 }
 
 function refill(state) {
+  if (isSandbox(state)) {
+    // The sandbox never runs out: the hand is the one tile the player chose, dealt again and again.
+    if (!state.queue.length) state.queue.push(makePiece(state, state.choice));
+    return;
+  }
   while (state.queue.length < Math.min(HAND, state.supply)) state.queue.push(draw(state));
   if (state.supply <= 0) state.over = true;
 }
@@ -241,7 +264,7 @@ export function place(state, q, r, rot) {
   events.push({ type: 'place', q, r, pts });
 
   state.queue.shift();
-  state.supply--;
+  if (!isSandbox(state)) state.supply--;
   develop(state, events);
   checkCharters(state, events);
   refill(state);
@@ -250,7 +273,7 @@ export function place(state, q, r, rot) {
 }
 
 export function discard(state) {
-  if (state.over || !state.queue.length) return null;
+  if (state.over || !state.queue.length || isSandbox(state)) return null;
   state.queue.shift();
   state.supply--;
   state.turn++;
@@ -259,6 +282,29 @@ export function discard(state) {
   const events = [{ type: 'discard' }];
   if (state.over) events.push({ type: 'over', score: state.score });
   return events;
+}
+
+// Is `kind` a tile that exists: a known base, and a feature only on plain grass?
+export function isTileKind(kind) {
+  if (!kind || typeof kind !== 'object' || !Object.prototype.hasOwnProperty.call(BASES, kind.base)) return false;
+  if (kind.feature === undefined || kind.feature === null) return true;
+  return kind.base === 'grass' && FEATURES.includes(kind.feature);
+}
+
+// Sandbox only: the player chooses the tile to lay next ({ base, feature? }). It stays chosen
+// after it is laid. Returns the new current tile, or null if the choice is not allowed.
+export function choose(state, kind) {
+  if (!isSandbox(state) || state.over || !isTileKind(kind)) return null;
+  const choice = { base: kind.base };
+  if (kind.feature) choice.feature = kind.feature;
+  const cur = state.queue[0];
+  if (cur && cur.base === choice.base && (cur.feature || null) === (choice.feature || null)) {
+    state.choice = choice;
+    return cur;
+  }
+  state.choice = choice;
+  state.queue = [makePiece(state, choice)];
+  return state.queue[0];
 }
 
 // What placing here would bring, without changing the game.

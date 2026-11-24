@@ -15,12 +15,12 @@
     "nodes" : [
         {
             "mesh" : 0,
-            "name" : "resource_lumber"
+            "name" : "Stone_Chunks_Small"
         }
     ],
     "materials" : [
         {
-            "name" : "hexagons_medieval",
+            "name" : "resource",
             "pbrMetallicRoughness" : {
                 "baseColorTexture" : {
                     "index" : 0
@@ -32,7 +32,7 @@
     ],
     "meshes" : [
         {
-            "name" : "Cube.569",
+            "name" : "Stone_Chunks_Small",
             "primitives" : [
                 {
                     "attributes" : {
@@ -55,69 +55,69 @@
     "images" : [
         {
             "mimeType" : "image/png",
-            "name" : "hexagons_medieval",
-            "uri" : "hexagons_medieval.png"
+            "name" : "resource_bits_texture",
+            "uri" : "resource_bits_texture.png"
         }
     ],
     "accessors" : [
         {
             "bufferView" : 0,
             "componentType" : 5126,
-            "count" : 330,
+            "count" : 902,
             "max" : [
-                0.3414117693901062,
-                0.20999956130981445,
-                0.1668621450662613
+                0.5000279545783997,
+                0.5656592845916748,
+                0.3849309980869293
             ],
             "min" : [
-                -0.3445308208465576,
-                -1.4901161193847656e-06,
-                -0.1636335700750351
+                -0.6217737793922424,
+                -0.013534218072891235,
+                -0.40120846033096313
             ],
             "type" : "VEC3"
         },
         {
             "bufferView" : 1,
             "componentType" : 5126,
-            "count" : 330,
+            "count" : 902,
             "type" : "VEC2"
         },
         {
             "bufferView" : 2,
             "componentType" : 5126,
-            "count" : 330,
+            "count" : 902,
             "type" : "VEC3"
         },
         {
             "bufferView" : 3,
             "componentType" : 5123,
-            "count" : 660,
+            "count" : 1662,
             "type" : "SCALAR"
         }
     ],
     "bufferViews" : [
         {
             "buffer" : 0,
-            "byteLength" : 3960,
+            "byteLength" : 10824,
             "byteOffset" : 0,
             "target" : 34962
         },
         {
             "buffer" : 0,
-            "byteLength" : 2640,
-            "byteOffset" : 3960,
+            "byteLength" : 7216,
+            "byteOffset" : 10824,
             "target" : 34962
         },
         {
             "buffer" : 0,
-            "byteLength" : 3960,
-            "byteOffset" : 6600,
+            "byteLength" : 10824,
+            "byteOffset" : 18040,
             "target" : 34962
         },
         {
             "buffer" : 0,
-            "byteLength" : 1320,
-            "byteOffset" : 10560,
+            "byteLength" : 3324,
+            "byteOffset" : 28864,
             "target" : 34963
         }
     ],
@@ -129,8 +129,8 @@
     ],
     "buffers" : [
         {
-            "byteLength" : 11880,
-            "uri" : "resource_lumber.bin"
+            "byteLength" : 32188,
+            "uri" : "Stone_Chunks_Small.bin"
         }
     ]
 }

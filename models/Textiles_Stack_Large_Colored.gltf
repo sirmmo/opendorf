@@ -15,12 +15,12 @@
     "nodes" : [
         {
             "mesh" : 0,
-            "name" : "resource_stone"
+            "name" : "Textiles_Stack_Large_Colored"
         }
     ],
     "materials" : [
         {
-            "name" : "hexagons_medieval",
+            "name" : "resource",
             "pbrMetallicRoughness" : {
                 "baseColorTexture" : {
                     "index" : 0
@@ -32,7 +32,7 @@
     ],
     "meshes" : [
         {
-            "name" : "Cube.568",
+            "name" : "Textiles_Stack_Large_Colored",
             "primitives" : [
                 {
                     "attributes" : {
@@ -55,69 +55,69 @@
     "images" : [
         {
             "mimeType" : "image/png",
-            "name" : "hexagons_medieval",
-            "uri" : "hexagons_medieval.png"
+            "name" : "resource_bits_texture",
+            "uri" : "resource_bits_texture.png"
         }
     ],
     "accessors" : [
         {
             "bufferView" : 0,
             "componentType" : 5126,
-            "count" : 320,
+            "count" : 2190,
             "max" : [
-                0.21054169535636902,
-                0.27999743819236755,
-                0.18078866600990295
+                0.8305404782295227,
+                0.9139501452445984,
+                0.8141147494316101
             ],
             "min" : [
-                -0.21055184304714203,
-                -4.172325134277344e-07,
-                -0.17706181108951569
+                -0.8083350658416748,
+                -0.041636377573013306,
+                -0.8508177995681763
             ],
             "type" : "VEC3"
         },
         {
             "bufferView" : 1,
             "componentType" : 5126,
-            "count" : 320,
+            "count" : 2190,
             "type" : "VEC2"
         },
         {
             "bufferView" : 2,
             "componentType" : 5126,
-            "count" : 320,
+            "count" : 2190,
             "type" : "VEC3"
         },
         {
             "bufferView" : 3,
             "componentType" : 5123,
-            "count" : 660,
+            "count" : 5748,
             "type" : "SCALAR"
         }
     ],
     "bufferViews" : [
         {
             "buffer" : 0,
-            "byteLength" : 3840,
+            "byteLength" : 26280,
             "byteOffset" : 0,
             "target" : 34962
         },
         {
             "buffer" : 0,
-            "byteLength" : 2560,
-            "byteOffset" : 3840,
+            "byteLength" : 17520,
+            "byteOffset" : 26280,
             "target" : 34962
         },
         {
             "buffer" : 0,
-            "byteLength" : 3840,
-            "byteOffset" : 6400,
+            "byteLength" : 26280,
+            "byteOffset" : 43800,
             "target" : 34962
         },
         {
             "buffer" : 0,
-            "byteLength" : 1320,
-            "byteOffset" : 10240,
+            "byteLength" : 11496,
+            "byteOffset" : 70080,
             "target" : 34963
         }
     ],
@@ -129,8 +129,8 @@
     ],
     "buffers" : [
         {
-            "byteLength" : 11560,
-            "uri" : "resource_stone.bin"
+            "byteLength" : 81576,
+            "uri" : "Textiles_Stack_Large_Colored.bin"
         }
     ]
 }

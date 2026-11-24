@@ -1,6 +1,6 @@
 import { View } from './view.js';
 import * as R from './rules.js';
-import { BUILDINGS } from './tiles.js';
+import { BUILDINGS, PALETTE, PALETTE_GROUPS, tileName } from './tiles.js';
 import { toGeoJSON } from './geojson.js';
 
 const $ = (id) => document.getElementById(id);
@@ -33,15 +33,52 @@ function todaySeed() {
   return `day-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function setURL(seed) {
+// A sandbox realm has no seed worth sharing: its link just says "sandbox".
+function setURL() {
   const u = new URL(location.href);
-  u.searchParams.set('seed', seed);
+  if (R.isSandbox(state)) {
+    u.searchParams.delete('seed');
+    u.searchParams.set('mode', 'sandbox');
+  } else {
+    u.searchParams.delete('mode');
+    u.searchParams.set('seed', state.seed);
+  }
   history.replaceState(null, '', u);
 }
 
-function startGame(seed) {
-  state = R.newGame(seed);
+// The normal game and the sandbox keep separate saves, so one never overwrites the other.
+const SAVES = {
+  normal: { game: 'opendorf.save', undo: 'opendorf.undo' },
+  sandbox: { game: 'opendorf.sandbox', undo: 'opendorf.sandbox.undo' },
+};
+
+function loadSaved(mode) {
+  let saved = null;
+  try { saved = JSON.parse(store.get(SAVES[mode].game) || 'null'); } catch { saved = null; }
+  if (!saved || saved.version !== 1 || saved.over || (saved.mode || 'normal') !== mode) return null;
+  return { saved, undo: store.get(SAVES[mode].undo) };
+}
+
+function startSandbox() {
+  startGame('sandbox-' + randomSeed(), 'sandbox');
+}
+
+function enterSandbox() {
+  const s = loadSaved('sandbox');
+  if (s) resume(s.saved, s.undo);
+  else startSandbox();
+}
+
+function leaveSandbox() {
+  const s = loadSaved('normal');
+  if (s) resume(s.saved, s.undo);
+  else startGame(randomSeed());
+}
+
+function startGame(seed, mode = 'normal') {
+  state = R.newGame(seed, { mode });
   undoJSON = null;
+  paletteTab = null;
   selected = null;
   wantRot = 0;
   seenCharters = new Set(state.charters.map((c) => c.id));
@@ -50,7 +87,7 @@ function startGame(seed) {
   view.cam.target.set(0, 0, 0);
   view.cam.dist = 15;
   $('over').hidden = true;
-  setURL(state.seed);
+  setURL();
   save();
   onTurn();
 }
@@ -58,27 +95,36 @@ function startGame(seed) {
 function resume(saved, undo) {
   state = saved;
   undoJSON = undo || null;
+  paletteTab = null;
   seenCharters = new Set(state.charters.map((c) => c.id));
   view.clear();
   view.sync(state, { animate: false });
   view.frame(state);
-  setURL(state.seed);
+  $('over').hidden = true;
+  selected = null;
+  setURL();
+  store.set('opendorf.mode', state.mode || 'normal');
   onTurn();
 }
 
 function save() {
-  store.set('opendorf.save', JSON.stringify(state));
-  store.set('opendorf.undo', undoJSON || '');
+  const keys = SAVES[R.isSandbox(state) ? 'sandbox' : 'normal'];
+  store.set(keys.game, JSON.stringify(state));
+  store.set(keys.undo, undoJSON || '');
+  store.set('opendorf.mode', state.mode || 'normal');
 }
 
 function onTurn() {
   const piece = state.queue[0];
   spots = new Map();
   if (piece) for (const s of R.legalSpots(state, piece)) spots.set(R.key(s.q, s.r), s.rots);
+  if (R.isSandbox(state)) showPalette();
   hud();
   refreshGhost();
-  view.thumbs.draw($('thumb1'), state.queue[1], 0);
-  view.thumbs.draw($('thumb2'), state.queue[2], 0);
+  if (!R.isSandbox(state)) {
+    view.thumbs.draw($('thumb1'), state.queue[1], 0);
+    view.thumbs.draw($('thumb2'), state.queue[2], 0);
+  }
   $('bUndo').disabled = !undoJSON;
   if (state.over) setTimeout(showOver, 900);
 }
@@ -140,7 +186,8 @@ function spotList() {
 }
 
 function previewAt(q, r, rot) {
-  const k = `${state.turn}|${q}|${r}|${rot}`;
+  const p = state.queue[0];
+  const k = `${state.turn}|${p.base}|${p.feature}|${p.v}|${q}|${r}|${rot}`;
   if (previewCache.k !== k) previewCache = { k, v: R.preview(state, q, r, rot) };
   return previewCache.v;
 }
@@ -178,7 +225,7 @@ function placeAt(c, forceRot) {
 }
 
 function discardTile() {
-  if (state.over) return;
+  if (state.over || R.isSandbox(state)) return;
   const before = JSON.stringify(state);
   const events = R.discard(state);
   if (!events) return;
@@ -201,17 +248,84 @@ function undo() {
 
 function react(events) {
   let delay = 0;
+  // Extra tiles mean nothing in the sandbox, so the news leaves them out.
+  const more = (n) => (R.isSandbox(state) ? '' : ` · +${n} tile${n > 1 ? 's' : ''}`);
   for (const e of events) {
     if (e.type === 'place') floater(e.q, e.r, `+${e.pts}`, '', 0);
     if (e.type === 'build') {
       delay += 0.5;
       floater(e.q, e.r, BUILDINGS[e.building].name, 'build', delay);
-      toast(`<b>${BUILDINGS[e.building].name}</b> raised · +${e.pts} renown · +${e.tiles} tile${e.tiles > 1 ? 's' : ''}`);
+      toast(`<b>${BUILDINGS[e.building].name}</b> raised · +${e.pts} renown${more(e.tiles)}`);
     }
-    if (e.type === 'charter') toast(`Charter fulfilled: ${e.text} · <b>+${e.pts}</b> · +${e.tiles} tiles`);
+    if (e.type === 'charter') toast(`Charter fulfilled: ${e.text} · <b>+${e.pts}</b>${more(e.tiles)}`);
   }
   bump('score');
   if (events.some((e) => e.type === 'build' || e.type === 'charter')) bump('supply');
+}
+
+// ---------- sandbox palette ----------
+
+let paletteTab = null;
+let paletteBuilt = false;
+
+const sameKind = (a, b) => a.base === b.base && (a.feature || null) === (b.feature || null);
+const GROUP_LABELS = { land: 'Land', road: 'Roads', river: 'Rivers', sea: 'Sea' };
+
+// One button per tile kind, with a thumbnail drawn once by the hand's thumbnail renderer.
+function buildPalette() {
+  if (paletteBuilt) return;
+  paletteBuilt = true;
+  for (const g of PALETTE_GROUPS) {
+    const b = document.createElement('button');
+    b.textContent = GROUP_LABELS[g];
+    b.dataset.group = g;
+    b.setAttribute('role', 'tab');
+    b.onclick = () => { paletteTab = g; showPalette(); };
+    $('palTabs').appendChild(b);
+  }
+  PALETTE.forEach((kind, i) => {
+    const b = document.createElement('button');
+    const name = tileName(kind);
+    b.title = name;
+    b.setAttribute('aria-label', name);
+    b.dataset.i = i;
+    const c = document.createElement('canvas');
+    c.width = c.height = 96;
+    b.appendChild(c);
+    view.thumbs.draw(c, { base: kind.base, feature: kind.feature, v: 3 + i }, 0);
+    b.onclick = () => chooseTile(kind);
+    $('palGrid').appendChild(b);
+  });
+}
+
+function showPalette() {
+  buildPalette();
+  const choice = state.choice || state.queue[0];
+  const cur = PALETTE.find((k) => sameKind(k, choice));
+  if (!paletteTab) paletteTab = cur ? cur.group : 'land';
+  $('palName').textContent = cur ? tileName(cur) : '';
+  for (const b of $('palTabs').children) b.setAttribute('aria-selected', String(b.dataset.group === paletteTab));
+  for (const b of $('palGrid').children) {
+    const kind = PALETTE[b.dataset.i];
+    b.hidden = kind.group !== paletteTab;
+    b.classList.toggle('on', !!cur && kind === cur);
+  }
+}
+
+function chooseTile(kind) {
+  if (!R.isSandbox(state) || !R.choose(state, kind)) return;
+  paletteTab = kind.group;
+  save();
+  onTurn();
+  const on = $('palGrid').querySelector('.on');
+  if (on) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+// T / Shift+T: the next or previous tile in the palette.
+function cycleTile(dir) {
+  if (!R.isSandbox(state)) return;
+  const i = PALETTE.findIndex((k) => sameKind(k, state.choice || state.queue[0]));
+  chooseTile(PALETTE[(i + dir + PALETTE.length) % PALETTE.length]);
 }
 
 // ---------- HUD ----------
@@ -220,21 +334,30 @@ function react(events) {
 function insets() {
   if ($('hud').hidden) return;
   const top = Math.max($('scorecard').getBoundingClientRect().bottom, $('charters').getBoundingClientRect().bottom);
-  view.setInsets(top, window.innerHeight - $('hand').getBoundingClientRect().top);
+  let bottom = $('hand').getBoundingClientRect().top;
+  // On phones the sandbox palette sits right above the tray.
+  const pal = $('palette').getBoundingClientRect();
+  if (!$('palette').hidden && pal.top > window.innerHeight / 2) bottom = Math.min(bottom, pal.top);
+  view.setInsets(top, window.innerHeight - bottom);
 }
 window.addEventListener('resize', insets);
 
 function hud() {
+  const sandbox = R.isSandbox(state);
+  document.body.classList.toggle('sandbox', sandbox);
+  $('modeTag').hidden = !sandbox;
+  $('palette').hidden = !sandbox;
+  $('menuTitle').textContent = sandbox ? 'Sandbox' : 'Realm';
   $('score').textContent = state.score;
-  $('supply').textContent = state.supply;
-  $('supply').classList.toggle('low', state.supply <= 5);
+  $('supply').textContent = sandbox ? '∞' : state.supply;
+  $('supply').classList.toggle('low', !sandbox && state.supply <= 5);
   const box = $('charters');
   box.innerHTML = '';
   for (const c of state.charters) {
     const now = Math.min(R.charterProgress(state, c), c.n);
     const el = document.createElement('div');
     el.className = 'charter card' + (seenCharters.has(c.id) ? '' : ' fresh');
-    el.innerHTML = `<div class="head"><span class="seal">Royal charter</span><span class="reward">+${c.pts} · +${c.tiles} tiles</span></div>
+    el.innerHTML = `<div class="head"><span class="seal">Royal charter</span><span class="reward">+${c.pts}${sandbox ? '' : ` · +${c.tiles} tiles`}</span></div>
       <div class="txt">${R.charterText(c)} <small>(${now}/${c.n})</small></div>
       <div class="prog"><i style="width:${(100 * now) / c.n}%"></i></div>`;
     box.appendChild(el);
@@ -451,6 +574,7 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'f') rotate(-1);
   else if (k === 'z' || (k === 'z' && (e.ctrlKey || e.metaKey))) undo();
   else if (k === 'x') discardTile();
+  else if (k === 't') cycleTile(e.shiftKey ? -1 : 1);
   else if (k === 'c') view.frame(state);
   else if (k === 'h' || k === '?') $('help').hidden = false;
   else if (k === 'q') view.cam.yaw += 0.3;
@@ -480,6 +604,9 @@ $('bMenuClose').onclick = () => { $('menu').hidden = true; };
 $('bNew').onclick = () => { $('menu').hidden = true; startGame(randomSeed()); };
 $('bDaily').onclick = () => { $('menu').hidden = true; startGame(todaySeed()); };
 $('bRestart').onclick = () => { $('menu').hidden = true; startGame(state.seed); };
+$('bSandbox').onclick = () => { $('menu').hidden = true; enterSandbox(); };
+$('bNewSandbox').onclick = () => { $('menu').hidden = true; startSandbox(); };
+$('bLeave').onclick = () => { $('menu').hidden = true; leaveSandbox(); };
 $('bShare').onclick = async () => {
   const u = new URL(location.href);
   u.search = '?seed=' + encodeURIComponent(state.seed);
@@ -518,11 +645,16 @@ for (const id of ['help', 'menu']) {
 
 async function boot() {
   await view.load((k) => { $('loadbar').style.width = `${Math.round(k * 100)}%`; });
-  const urlSeed = new URLSearchParams(location.search).get('seed');
-  let saved = null;
-  try { saved = JSON.parse(store.get('opendorf.save') || 'null'); } catch { saved = null; }
-  if (saved && saved.version === 1 && !saved.over && (!urlSeed || saved.seed === urlSeed)) resume(saved, store.get('opendorf.undo'));
-  else startGame(urlSeed || randomSeed());
+  const params = new URLSearchParams(location.search);
+  const urlSeed = params.get('seed');
+  // ?mode=sandbox opens the sandbox; a plain link goes back to whichever was played last.
+  if (params.get('mode') === 'sandbox' || (!urlSeed && store.get('opendorf.mode') === 'sandbox')) {
+    enterSandbox();
+  } else {
+    const s = loadSaved('normal');
+    if (s && (!urlSeed || s.saved.seed === urlSeed)) resume(s.saved, s.undo);
+    else startGame(urlSeed || randomSeed());
+  }
   $('loading').hidden = true;
   $('hud').hidden = false;
   insets();
@@ -530,7 +662,7 @@ async function boot() {
   view.applyShift();
   if (!store.get('opendorf.seenHelp')) $('help').hidden = false;
   view.start();
-  window.__opendorf = { get state() { return state; }, view, R, placeAt, rotate };
+  window.__opendorf = { get state() { return state; }, view, R, placeAt, rotate, chooseTile, enterSandbox, leaveSandbox };
 }
 
 boot().catch((err) => {

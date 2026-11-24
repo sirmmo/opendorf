@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   newGame, place, discard, preview, legalSpots, canPlace, edgeAt, fits, groups, key, START_SUPPLY,
+  choose, isSandbox, isTileKind,
 } from '../js/rules.js';
-import { BASES, BAG } from '../js/tiles.js';
+import { BASES, BAG, PALETTE, FEATURES } from '../js/tiles.js';
 
 // Plays a whole game with a simple greedy player: take the spot the preview scores best.
 function autoplay(seed, limit = 400) {
@@ -149,4 +150,118 @@ test('games end, and the state survives JSON', () => {
       }
     }
   }
+});
+
+// ---------- sandbox ----------
+
+test('normal games are not sandboxes and cannot choose tiles', () => {
+  const s = newGame('plain');
+  assert.equal(s.mode, 'normal');
+  assert.equal(isSandbox(s), false);
+  const before = JSON.stringify(s);
+  assert.equal(choose(s, { base: 'grass', feature: 'forest' }), null);
+  assert.equal(JSON.stringify(s), before);
+  // The mode option does not change how a normal game is dealt.
+  assert.deepEqual(newGame('plain', { mode: 'normal' }), s);
+  assert.throws(() => newGame('x', { mode: 'chaos' }));
+});
+
+test('the palette holds every base and every feature, and nothing else', () => {
+  for (const base of Object.keys(BASES)) assert.ok(PALETTE.some((p) => p.base === base), base);
+  for (const f of FEATURES) assert.ok(PALETTE.some((p) => p.feature === f), f);
+  for (const p of PALETTE) assert.ok(isTileKind(p), JSON.stringify(p));
+});
+
+test('a sandbox lets the player choose the tile, and checks the choice', () => {
+  const s = newGame('sb', { mode: 'sandbox' });
+  assert.equal(isSandbox(s), true);
+  assert.equal(s.queue.length, 1);
+  const piece = choose(s, { base: 'road_M' });
+  assert.equal(piece.base, 'road_M');
+  assert.equal(s.queue.length, 1);
+  assert.equal(s.queue[0], piece);
+  assert.deepEqual(s.choice, { base: 'road_M' });
+  // Not allowed: unknown bases, unknown features, features off plain grass.
+  const before = JSON.stringify(s);
+  assert.equal(choose(s, { base: 'castle' }), null);
+  assert.equal(choose(s, { base: 'grass', feature: 'volcano' }), null);
+  assert.equal(choose(s, { base: 'road_A', feature: 'forest' }), null);
+  assert.equal(choose(s, { base: 'toString' }), null);
+  assert.equal(choose(s, null), null);
+  assert.equal(JSON.stringify(s), before);
+  // Choosing what is already in hand keeps the same tile.
+  assert.equal(choose(s, { base: 'road_M' }), piece);
+  // Every tile in the palette can be chosen.
+  for (const p of PALETTE) {
+    const t = choose(s, p);
+    assert.equal(t.base, p.base);
+    assert.equal(t.feature, p.feature);
+  }
+});
+
+test('a chosen tile is laid with the normal rules and renown', () => {
+  const s = newGame('sb-rules', { mode: 'sandbox' });
+  choose(s, { base: 'road_M' });
+  // The road may not run into the hearth's grass...
+  assert.equal(place(s, 1, 0, 0), null);
+  // ...but pointing away it fits: 1 for the neighbour, no road joined.
+  const ev = place(s, 1, 0, 3);
+  assert.ok(ev);
+  assert.equal(ev[0].pts, 1);
+  assert.equal(s.tiles[key(1, 0)].base, 'road_M');
+  // The choice stays: the next tile is another dead end.
+  assert.equal(s.queue[0].base, 'road_M');
+  // Three forests next to the hearth raise a lumbermill, as in a normal game.
+  const s2 = newGame('sb-wood', { mode: 'sandbox' });
+  choose(s2, { base: 'grass', feature: 'forest' });
+  place(s2, 1, 0, 0);
+  const second = place(s2, 2, 0, 0);
+  assert.equal(second[0].pts, 1 + 2); // one neighbour, and it is forest too
+  const third = place(s2, 1, 1, 0);
+  assert.ok(third.some((e) => e.type === 'build' && e.building === 'lumbermill'));
+  assert.equal(s2.tiles[key(0, 0)].building, 'lumbermill');
+  // Preview agrees with place and changes nothing.
+  choose(s2, { base: 'grass', feature: 'village' });
+  const before = JSON.stringify(s2);
+  const pv = preview(s2, -1, 0, 0);
+  assert.equal(JSON.stringify(s2), before);
+  const score0 = s2.score;
+  place(s2, -1, 0, 0);
+  assert.equal(s2.score - score0, pv.pts);
+});
+
+test('the sandbox never runs out, never ends and cannot discard', () => {
+  const s = newGame('sb-long', { mode: 'sandbox' });
+  const supply = s.supply;
+  assert.equal(discard(s), null);
+  const kinds = PALETTE;
+  let placed = 0;
+  for (let i = 0; placed < START_SUPPLY * 3 && i < 2000; i++) {
+    choose(s, kinds[i % kinds.length]);
+    const spot = legalSpots(s, s.queue[0])[0];
+    if (!spot) continue;
+    assert.ok(place(s, spot.q, spot.r, spot.rots[0]));
+    placed++;
+    assert.equal(s.over, false);
+    assert.equal(s.queue.length, 1);
+  }
+  assert.equal(placed, START_SUPPLY * 3);
+  assert.equal(s.stats.placed, placed);
+  assert.ok(s.supply >= supply, 'laying tiles takes nothing from the supply');
+  assert.ok(s.score > 0);
+  assert.equal(s.charters.length, 3);
+  assert.deepEqual(JSON.parse(JSON.stringify(s)), s);
+});
+
+test('a sandbox plays out the same way from the same seed and choices', () => {
+  const run = () => {
+    const s = newGame('sb-same', { mode: 'sandbox' });
+    for (let i = 0; i < 30; i++) {
+      choose(s, PALETTE[(i * 7) % PALETTE.length]);
+      const spot = legalSpots(s, s.queue[0])[0];
+      if (spot) place(s, spot.q, spot.r, spot.rots[0]);
+    }
+    return s;
+  };
+  assert.deepEqual(run(), run());
 });

@@ -91,10 +91,37 @@ const MODELS = [
     'mountain_A_grass', 'mountain_B_grass', 'mountain_C_grass', 'mountain_A_grass_trees', 'mountain_C_grass_trees',
     'hill_single_A', 'hill_single_B', 'hill_single_C', 'rock_single_A', 'rock_single_C', 'rock_single_E',
     'tree_single_A', 'tree_single_B', 'waterlily_A', 'waterlily_B', 'waterplant_A', 'waterplant_B',
-    'cloud_big', 'cloud_small', 'barrel', 'crate_A_big', 'crate_B_small', 'sack', 'resource_lumber',
-    'resource_stone', 'flag_blue', 'wheelbarrow', 'tent',
+    'cloud_big', 'cloud_small', 'barrel', 'crate_A_big', 'crate_B_small', 'sack',
+    'flag_blue', 'wheelbarrow', 'tent',
+    'Gold_Bars_Stack_Large',
   ]),
 ];
+
+// What piles up beside a building, from the KayKit Resource Bits pack: a small, medium or large
+// stack as the land that feeds it (or the village it serves) grows. `from` is the group that sets
+// the size: for a workshop the biggest group of its land next to it, for a town building its
+// village. `at` are the group sizes where the pile turns medium and large.
+const PILES = {
+  lumbermill: { from: 'forest', at: [6, 12], m: ['Wood_Planks_Stack_Small', 'Wood_Planks_Stack_Medium', 'Wood_Planks_Stack_Large'] },
+  mine: { from: 'mountain', at: [2, 4], m: ['Stone_Chunks_Small', 'Stone_Bricks_Stack_Medium', 'Stone_Bricks_Stack_Large'] },
+  blacksmith: { from: 'village', at: [8, 12], m: ['Iron_Bars_Stack_Small', 'Iron_Bars_Stack_Medium', 'Iron_Bars_Stack_Large'] },
+  market: { from: 'village', at: [9, 12], m: ['Textiles_Stack_Small', 'Textiles_Stack_Large', 'Textiles_Stack_Large_Colored'] },
+};
+const PILE_SCALE = 0.24; // Resource Bits stacks are about 1.6 across; a house is about 0.8.
+for (const p of Object.values(PILES)) MODELS.push(...p.m);
+
+// Pile size (0, 1, 2) for a building tile, from the groups around it.
+function pileTier(state, tile, sizes) {
+  const p = PILES[tile.building];
+  if (!p) return null;
+  let n = 0;
+  if (p.from === 'village') {
+    n = sizes.village.get(key(tile.q, tile.r)) || 0;
+  } else {
+    for (const c of neighbours(tile.q, tile.r)) n = Math.max(n, sizes[p.from].get(key(c.q, c.r)) || 0);
+  }
+  return n >= p.at[1] ? 2 : n >= p.at[0] ? 1 : 0;
+}
 
 // ---------- what stands on a tile ----------
 
@@ -145,10 +172,14 @@ function decorate(tile, info) {
     } else {
       out.push({ m: BUILDINGS[b].model, x: 0, z: 0, ry });
     }
-    const extra = { lumbermill: 'resource_lumber', mine: 'resource_stone', market: 'crate_A_big', blacksmith: 'barrel', tavern: 'barrel', windmill: 'sack' }[b];
-    if (extra && b !== 'castle') {
-      const p = along(0.62, 0.45);
-      out.push({ m: extra, x: p.x, z: p.z, ry: ry + 0.4 });
+    const p = along(0.62, 0.45);
+    if (PILES[b]) {
+      out.push({ m: PILES[b].m[info.pile ?? 0], x: p.x, z: p.z, ry: ry + 0.4, s: PILE_SCALE });
+    } else if (b === 'castle') {
+      out.push({ m: 'Gold_Bars_Stack_Large', x: p.x, z: p.z, ry: ry + 0.4, s: PILE_SCALE });
+    } else {
+      const extra = { tavern: 'barrel', windmill: 'sack' }[b];
+      if (extra) out.push({ m: extra, x: p.x, z: p.z, ry: ry + 0.4 });
     }
     return out;
   }
@@ -350,17 +381,23 @@ export class View {
 
   // Bring the board in line with the game. Returns nothing; animates what changed.
   sync(state, { animate = true } = {}) {
-    const forest = new Map();
-    for (const grp of groups(state, 'forest')) for (const k of grp) forest.set(k, grp.length);
+    // Size of the group each tile belongs to, for forests and the piles beside buildings.
+    const sizes = {};
+    for (const kind of ['forest', 'mountain', 'village']) {
+      sizes[kind] = new Map();
+      for (const grp of groups(state, kind)) for (const k of grp) sizes[kind].set(k, grp.length);
+    }
+    const forest = sizes.forest;
     const seen = new Set();
     for (const [k, t] of Object.entries(state.tiles)) {
       seen.add(k);
       const info = { forest: forest.get(k), facing: t.building ? facing(state, t) : null, fields: 0 };
+      info.pile = t.building ? pileTier(state, t, sizes) : null;
       if (t.feature === 'field') {
         for (const n of neighbours(t.q, t.r)) if (tileAt(state, n.q, n.r)?.feature === 'field') info.fields |= 1 << n.k;
       }
       const fClass = t.feature === 'forest' ? (info.forest >= 5 ? 3 : info.forest >= 2 ? 2 : 1) : 0;
-      const vis = [t.base, t.rot, t.feature, t.building, fClass, info.facing, info.fields].join('|');
+      const vis = [t.base, t.rot, t.feature, t.building, fClass, info.facing, info.fields, info.pile].join('|');
       const cur = this.views.get(k);
       if (cur && cur.vis === vis) continue;
       const g = this.tileGroup(t, info);

@@ -32,6 +32,14 @@ Every realm has a seed. The same seed always deals the same tiles, so you can sh
 (menu → *Copy link to this realm*) or play *Today's realm*. The game saves itself after every
 move; the last move can be undone.
 
+**Sandbox.** Menu → *Sandbox (choose every tile)* opens a realm where you pick each tile
+yourself from a palette of every tile there is: each kind of land (forest, field, village,
+meadow, mountain, plain grass), every road and river shape, fords, open sea and coasts. The
+tile you pick stays in hand until you pick another. Fitting, renown, buildings and charters
+work as in the normal game, but the tiles never run out and the realm never ends. The sandbox
+saves apart from your normal realm (open it directly with `?mode=sandbox`); *Back to my realm*
+returns to where you left off, and *New sandbox realm* starts over.
+
 ## Map export (GeoJSON)
 
 Menu → *Download map (GeoJSON)* (also on the end screen) saves the realm as a GeoJSON
@@ -58,6 +66,7 @@ somewhere else, open the game with `?origin=lon,lat` (for example `?origin=11.34
 | Rotate the view | right drag, `Q` / `E` | twist with two fingers |
 | Zoom | wheel, `+` / `-` | pinch |
 | Undo, discard, center | `Z`, `X`, `C` | ↶ and ⌖ buttons, *Discard* |
+| Choose a tile (sandbox) | click it in the palette, `T` / `Shift+T` for the next / previous | tap it in the strip above the tray (swipe for more) |
 
 ## Development
 
@@ -71,20 +80,21 @@ node tools/balance.mjs 1 2 3      # greedy games per seed: length, score, buildi
 
 | Path | What |
 | --- | --- |
-| `js/tiles.js` | Tile edges, the tile bag, buildings, workshop and village rules |
-| `js/rules.js` | The game: pure, seeded and JSON-serialisable (`newGame`, `place`, `preview`, `discard`) |
+| `js/tiles.js` | Tile edges, the tile bag, the sandbox palette, buildings, workshop and village rules |
+| `js/rules.js` | The game: pure, seeded and JSON-serialisable (`newGame`, `place`, `preview`, `discard`, and `choose` for the sandbox) |
 | `js/view.js` | three.js board, ghost tile, spots, construction animation, hand thumbnails |
 | `js/geojson.js`, `js/geo.js` | GeoJSON export: projection and merging tiles into outlines |
 | `js/main.js` | Input, HUD, saving, undo, map download |
 | `tools/edges.py`, `tools/heights.py` | Measure which tile edges carry road, river or sea, and the height of each corner, from the KayKit meshes |
-| `models/` | The subset of the KayKit pack the game uses (glTF + one shared texture) |
+| `models/` | The subset of the KayKit packs the game uses (glTF + each pack's shared texture) |
 
 The rules never touch the DOM or three.js, so the tests and the balance script run them
 directly in Node.
 
 ## Credits
 
-- 3D models: [KayKit Medieval Hexagon Pack](https://kaylousberg.itch.io/kaykit-medieval-hexagon) by
+- 3D models: [KayKit Medieval Hexagon Pack](https://kaylousberg.itch.io/kaykit-medieval-hexagon) and
+  [KayKit Resource Bits](https://www.kaylousberg.com) (the piles beside workshops) by
   Kay Lousberg, CC0.
 - [three.js](https://threejs.org), MIT (`vendor/three-LICENSE.txt`).
 - Fonts: Cinzel and Fredoka from Google Fonts (OFL).
