@@ -111,3 +111,26 @@ directly in Node.
 ## License
 
 Code: GPL-3.0, see `LICENSE`. Models: CC0.
+
+## Publishing on Wavedash
+
+OpenDorf is published on [Wavedash](https://wavedash.com) ([docs](https://docs.wavedash.com)) from
+`wavedash.toml`, at the root.
+
+1. **Create the game** in the Wavedash Developer Portal, or with the CLI (`curl -fsSL
+   https://wavedash.com/cli/install.sh | sh`, `wavedash auth login`, then `wavedash project create
+   --title "OpenDorf" --team-id <TEAM_ID>`).
+2. **Set its id**: `game_id` in `wavedash.toml`, or, to keep it out of the repository,
+   `WAVEDASH_GAME_ID_OPENDORF` (or `WAVEDASH_GAME_ID`) in the environment, and the repository
+   variable `WAVEDASH_GAME_ID_OPENDORF` (Settings › Secrets and variables › Actions › Variables).
+3. **Upload a build**: `sh tools/wavedash.sh` assembles the site into `_wavedash/` the way the Pages
+   workflow does (no tests or tools) and, with the CLI on `PATH` and `WAVEDASH_TOKEN` set, runs
+   `wavedash build push`. Without the CLI (or with `WAVEDASH_DRY_RUN=1`) it only says what it would
+   push. On GitHub: Actions › Wavedash › Run workflow, with the secret `WAVEDASH_TOKEN`.
+4. **Publish it**: `wavedash publish <BUILD_ID>` (the id `build push` printed), or in the Developer
+   Portal.
+
+On Wavedash the game stays behind Wavedash's loading screen until it calls `Wavedash.init()`:
+`js/main.js` does it through `js/wavedash.js` when the realm has loaded (the loading bar also feeds
+Wavedash's), or when loading fails, to show the error. Elsewhere (GitHub Pages, a local server)
+there is no `Wavedash` object and the calls do nothing.
