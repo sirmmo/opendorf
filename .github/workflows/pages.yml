@@ -25,13 +25,12 @@ jobs:
           node-version: 22
       - run: npm test
 
-  deploy:
+  # Built and deployed in two jobs: in one, deploy-pages sometimes looked for the uploaded site
+  # too soon and failed with "No artifacts named github-pages".
+  build:
     needs: test
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - name: Assemble site
@@ -43,5 +42,13 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v4
