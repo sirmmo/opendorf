@@ -20,9 +20,15 @@ around them to work.
    come a tavern (5), a market (7), a church (10) and finally a castle (14). A village with a
    lumbermill and a mine also gets a blacksmith. Every building needs a free house to stand on,
    so workshops and town buildings compete for the same houses.
-4. **Royal charters** set three goals at a time (a forest of 8, a road across 6 tiles, a
+4. **Ruins** of an older realm turn up now and then (about one tile in 27): broken arches,
+   columns, walls and statues. A house next to ruins becomes a **dig site** (10): the first
+   ruin tile feeds one, then every two more feed another. A village with a dig site and a
+   tavern or a market founds an **Archaeological Society** (15), and a village with a Society
+   and a church opens an **Academy** (25). A royal charter may ask you to *uncover ruins
+   across N tiles* (one or two more, anywhere in the realm).
+5. **Royal charters** set three goals at a time (a forest of 8, a road across 6 tiles, a
    second windmill…).
-5. **Tiles run out.** You start with 40. Every building and every charter brings more. When
+6. **Tiles run out.** You start with 40. Every building and every charter brings more. When
    the last tile is laid, the realm is complete.
 
 Renown per tile: +1 for each neighbour, +2 for each neighbour with the same land, +2 for each
@@ -34,7 +40,7 @@ move; the last move can be undone.
 
 **Sandbox.** Menu → *Sandbox (choose every tile)* opens a realm where you pick each tile
 yourself from a palette of every tile there is: each kind of land (forest, field, village,
-meadow, mountain, plain grass), every road and river shape, fords, open sea and coasts. The
+meadow, mountain, ruins, plain grass), every road and river shape, fords, open sea and coasts. The
 tile you pick stays in hand until you pick another. Fitting, renown, buildings and charters
 work as in the normal game, but the tiles never run out and the realm never ends. The sandbox
 saves apart from your normal realm (open it directly with `?mode=sandbox`); *Back to my realm*
@@ -48,7 +54,7 @@ FeatureCollection. Each feature has a `layer` property:
 | `layer` | Geometry | What |
 | --- | --- | --- |
 | `realm` | (Multi)Polygon | Outline of the whole realm |
-| `area` | (Multi)Polygon | Each forest, farmland, village, mountain range and sea, merged (`kind`, `tiles`) |
+| `area` | (Multi)Polygon | Each forest, farmland, village, mountain range, ruins and sea, merged (`kind`, `tiles`) |
 | `road`, `waterway` | MultiLineString | Each road and river network |
 | `building` | Point | Workshops, town buildings and houses (`building`, `name`) |
 | `tile` | Polygon | Every tile: `q`, `r`, `base`, `model`, `rotation`, `edges`, `feature`, `building`, `order` |
@@ -86,7 +92,7 @@ node tools/balance.mjs 1 2 3      # greedy games per seed: length, score, buildi
 | `js/geojson.js`, `js/geo.js` | GeoJSON export: projection and merging tiles into outlines |
 | `js/main.js` | Input, HUD, saving, undo, map download |
 | `tools/edges.py`, `tools/heights.py` | Measure which tile edges carry road, river or sea, and the height of each corner, from the KayKit meshes |
-| `models/` | The subset of the KayKit packs the game uses (glTF + each pack's shared texture) |
+| `models/` | The subset of the KayKit packs the game uses (glTF + each pack's shared texture); `models/ruins/` the Quaternius ruins pieces (GLB, flat colours) |
 
 The rules never touch the DOM or three.js, so the tests and the balance script run them
 directly in Node.
@@ -96,6 +102,9 @@ directly in Node.
 - 3D models: [KayKit Medieval Hexagon Pack](https://kaylousberg.itch.io/kaykit-medieval-hexagon) and
   [KayKit Resource Bits](https://www.kaylousberg.com) (the piles beside workshops) by
   Kay Lousberg, CC0.
+- Ruins, the dig site, the Archaeological Society and the Academy:
+  [Ultimate Modular Ruins Pack](https://quaternius.com/packs/ultimatemodularruins.html) by
+  [Quaternius](https://quaternius.com), CC0 (`models/ruins/License.txt`), converted to GLB.
 - [three.js](https://threejs.org), MIT (`vendor/three-LICENSE.txt`).
 - Fonts: Cinzel and Fredoka from Google Fonts (OFL).
 

@@ -1,5 +1,5 @@
 // The realm as GeoJSON: one polygon per tile, merged areas for each forest, field, village,
-// mountain range and sea, road and river networks as lines, buildings as points, and the
+// mountain range, ruins and sea, road and river networks as lines, buildings as points, and the
 // outline of the whole realm.
 //
 // Game (0, 0) is placed at `origin` ([lon, lat], default 0, 0) and one game unit is
@@ -41,7 +41,7 @@ export function toGeoJSON(state, { origin = [0, 0], metersPerUnit = 50 } = {}) {
   }));
 
   const areas = [
-    ['forest', 'forest'], ['field', 'farmland'], ['village', 'village'], ['mountain', 'mountain'], ['sea', 'sea'],
+    ['forest', 'forest'], ['field', 'farmland'], ['village', 'village'], ['mountain', 'mountain'], ['ruins', 'ruins'], ['sea', 'sea'],
   ];
   for (const [kind, name] of areas) {
     for (const g of groups(state, kind)) {

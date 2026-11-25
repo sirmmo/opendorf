@@ -6,7 +6,7 @@
 // the player choose every tile (`choose`), never runs out and never ends. Everything else
 // (fitting, renown, buildings, charters) is the same in both.
 
-import { BASES, BAG, BUILDINGS, FEATURES, WORKSHOPS, CIVIC, compatible, cornersAgree } from './tiles.js';
+import { BASES, BAG, BUILDINGS, FEATURES, WORKSHOPS, CIVIC, COMBOS, workshopsFor, compatible, cornersAgree } from './tiles.js';
 
 export const DIRS = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]];
 export const START_SUPPLY = 40;
@@ -115,6 +115,7 @@ function inGroup(tile, kind) {
     case 'field':
     case 'village':
     case 'mountain':
+    case 'ruins':
       return tile.feature === kind;
     case 'road':
       return BASES[tile.base].edges.includes('R');
@@ -378,7 +379,7 @@ function develop(state, events) {
 function growOnce(state, events) {
   for (const w of WORKSHOPS) {
     for (const g of groups(state, w.group)) {
-      const allowed = Math.floor(g.length / w.per);
+      const allowed = workshopsFor(w, g.length);
       if (allowed <= adjacentBuilt(state, g, w.building)) continue;
       const house = housesBy(state, g, false)[0];
       if (house) {
@@ -398,9 +399,11 @@ function growOnce(state, events) {
         return true;
       }
     }
-    if (has('lumbermill') && has('mine') && !has('blacksmith')) {
-      build(state, houses[0], 'blacksmith', events);
-      return true;
+    for (const c of COMBOS) {
+      if (!has(c.building) && c.needs.every((any) => any.some(has))) {
+        build(state, houses[0], c.building, events);
+        return true;
+      }
     }
   }
   return false;
@@ -421,10 +424,18 @@ function mostCentral(state, houses) {
 
 // ---------- royal charters ----------
 
-const CHARTER_KINDS = ['forest', 'field', 'village', 'road', 'river', 'sea', 'build'];
+const CHARTER_KINDS = ['forest', 'field', 'village', 'road', 'river', 'sea', 'build', 'ruins'];
+
+export function countFeature(state, feature) {
+  let n = 0;
+  for (const t of Object.values(state.tiles)) if (t.feature === feature) n++;
+  return n;
+}
 
 export function charterProgress(state, c) {
   if (c.kind === 'build') return countBuilt(state, c.building);
+  // Ruins are rare: they count wherever they lie, not only side by side.
+  if (c.kind === 'ruins') return countFeature(state, 'ruins');
   return largest(state, c.kind);
 }
 
@@ -437,6 +448,7 @@ export function charterText(c) {
     case 'road': return `Build a road across ${n} tiles`;
     case 'river': return `Follow a river across ${n} tiles`;
     case 'sea': return `Chart a sea of ${n} tiles`;
+    case 'ruins': return `Uncover ruins across ${n} tiles`;
     case 'build': {
       const name = BUILDINGS[c.building].name;
       return n === 1 ? `Raise a ${name}` : `Raise ${n} ${name}s`;
@@ -452,6 +464,14 @@ function makeCharter(state, kind) {
     c.building = options[Math.floor(rand(state) * options.length)];
     c.n = countBuilt(state, c.building) + 1;
     c.pts = 15;
+    c.tiles = 3;
+    return c;
+  }
+  if (kind === 'ruins') {
+    // Ruins are rare, so the goal is one or two more ruin tiles anywhere in the realm.
+    const step = 1 + Math.floor(rand(state) * 2);
+    c.n = countFeature(state, 'ruins') + step;
+    c.pts = 10 + 4 * step;
     c.tiles = 3;
     return c;
   }

@@ -84,7 +84,7 @@ function prng(seed) {
 const MODELS = [
   ...new Set([
     ...Object.values(BASES).map((b) => b.model),
-    ...Object.values(BUILDINGS).map((b) => b.model),
+    ...Object.values(BUILDINGS).map((b) => b.model).filter(Boolean),
     'building_grain', 'building_stage_A', 'building_stage_B', 'building_stage_C', 'building_scaffolding',
     'building_home_A_blue', 'building_home_B_blue',
     'trees_A_small', 'trees_A_medium', 'trees_A_large', 'trees_B_small', 'trees_B_medium', 'trees_B_large',
@@ -110,6 +110,191 @@ const PILES = {
 const PILE_SCALE = 0.24; // Resource Bits stacks are about 1.6 across; a house is about 0.8.
 for (const p of Object.values(PILES)) MODELS.push(...p.m);
 
+// ---------- ruins ----------
+
+// Pieces of the Quaternius Ultimate Modular Ruins Pack (GLB, in metres). KayKit props are about
+// 0.2 to the metre (a barrel is 0.21 tall), so the ruins are scaled the same way: a 3.5 m arch
+// stands 0.7 tall, a little lower than a house.
+const RUIN = 0.2;
+const RUIN_PIECES = [
+  'Arch_Round', 'Wall_ArchRound', 'Wall_ArchRound_Overgrown_Broken', 'Wall_Broken', 'Wall_Double_Broken', 'Wall',
+  'Window_Open', 'Column_Round', 'Column_Round_Short', 'Statue_Fox', 'Statue_Stag',
+  'Floor_Squares', 'Floor_Diamond', 'Stairs', 'Bookcase_Full', 'Doors_RoundArch',
+  'Pot1', 'Pot1_Broken', 'Pot2_Broken', 'Pot3_Broken', 'Bricks', 'Skull', 'Candles_1', 'Cart', 'Torch',
+];
+MODELS.push(...RUIN_PIECES.map((n) => 'ruins/' + n));
+
+// The pack's stone is a dark olive grey; KayKit's is light and slightly warm. Recolour the stone
+// materials (by name) so the ruins sit in the same palette, and lift the wood a little.
+const RUIN_COLOURS = { Main: 0xa8a28f, Highlights: 0xccc5af, Black: 0x655f51, Stone: 0xb7b09c };
+function restyleRuin(root) {
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    const fix = (m) => {
+      const c = RUIN_COLOURS[m.name];
+      const out = m.clone();
+      if (c) out.color = new THREE.Color(c);
+      else if (/wood/i.test(m.name)) out.color = m.color.clone().multiplyScalar(1.6);
+      return out;
+    };
+    o.material = Array.isArray(o.material) ? o.material.map(fix) : fix(o.material);
+  });
+}
+
+// Shapes the ruins pack does not have: a gable roof in KayKit blue with stone gable ends, a
+// dome, a stone block, and a patch of dug earth. Each is centred on x/z with its base at y 0.
+const MAT = {
+  stone: new THREE.MeshStandardMaterial({ color: RUIN_COLOURS.Highlights, roughness: 0.9, flatShading: true }),
+  roof: new THREE.MeshStandardMaterial({ color: 0x2a8bd2, roughness: 0.8, flatShading: true }),
+  earth: new THREE.MeshStandardMaterial({ color: 0x8a6a45, roughness: 1, flatShading: true }),
+};
+function gableRoof(w, d, h) {
+  const g = new THREE.Group();
+  const slope = Math.hypot(d / 2, h);
+  const tilt = Math.atan2(h, d / 2);
+  for (const side of [-1, 1]) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w + 0.08, 0.04, slope + 0.05), MAT.roof);
+    m.position.set(0, h / 2, (side * d) / 4);
+    m.rotation.x = side * tilt;
+    g.add(m);
+  }
+  const tri = new THREE.Shape([new THREE.Vector2(-d / 2, 0), new THREE.Vector2(d / 2, 0), new THREE.Vector2(0, h)]);
+  const ends = new THREE.ExtrudeGeometry(tri, { depth: w, bevelEnabled: false }).translate(0, 0, -w / 2).rotateY(Math.PI / 2);
+  g.add(new THREE.Mesh(ends, MAT.stone));
+  return g;
+}
+function dome(r, drum) {
+  const g = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.04, r * 1.04, drum, 16), MAT.stone);
+  base.position.y = drum / 2;
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 8, 0, TAU, 0, Math.PI / 2), MAT.roof);
+  cap.position.y = drum;
+  const tip = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.03, r * 0.5, 6), MAT.stone);
+  tip.position.y = drum + r + r * 0.2;
+  g.add(base, cap, tip);
+  return g;
+}
+const box = (w, h, d, mat) => {
+  const g = new THREE.Group();
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.y = h / 2;
+  g.add(m);
+  return g;
+};
+const SHAPES = {
+  roof_society: () => gableRoof(0.78, 0.74, 0.24),
+  roof_academy: () => gableRoof(1.06, 0.78, 0.22),
+  dome_academy: () => dome(0.19, 0.16),
+  slab_society: () => box(0.86, 0.05, 0.8, MAT.stone),
+  slab_academy: () => box(1.12, 0.05, 0.86, MAT.stone),
+  plinth_society: () => box(0.84, 0.07, 0.78, MAT.stone),
+  plinth_academy: () => box(1.12, 0.07, 0.86, MAT.stone),
+  pit: () => box(0.46, 0.012, 0.36, MAT.earth),
+};
+
+// A ruin piece at (x, z) in some local frame, turned by ry, at RUIN scale times `k`.
+const ruin = (name, x, z, ry = 0, more = {}) => ({ m: 'ruins/' + name, x, z, ry, s: RUIN * (more.k || 1), ...more });
+// A column lying on its side: its axis turned from y onto -x, then the whole turned by ry.
+const fallen = (name, x, z, ry, radius) => ruin(name, x, z, ry, { rz: Math.PI / 2, y: radius * RUIN });
+
+// The small ruins in the middle of a ruins tile, one of a few layouts.
+const RUIN_LAYOUTS = [
+  // A broken arch over a stretch of floor, a column stump, a fallen drum, bricks and a pot.
+  () => [
+    ruin('Floor_Squares', -0.2, -0.1), ruin('Floor_Squares', 0.2, -0.1, Math.PI / 2),
+    ruin('Arch_Round', 0, -0.1),
+    ruin('Column_Round_Short', 0.44, 0.2),
+    fallen('Column_Round_Short', -0.05, 0.3, 0.35, 0.24),
+    ruin('Bricks', 0.42, -0.42, 1.1), ruin('Pot1_Broken', -0.46, -0.32, 0.4),
+  ],
+  // A colonnade: two columns still standing, one stump, one fallen across the floor.
+  () => [
+    ruin('Floor_Squares', -0.4, -0.12), ruin('Floor_Squares', 0, -0.12, Math.PI / 2), ruin('Floor_Squares', 0.4, -0.12),
+    ruin('Column_Round', -0.4, -0.2), ruin('Column_Round_Short', 0, -0.2), ruin('Column_Round', 0.4, -0.2),
+    fallen('Column_Round', 0.42, 0.3, -0.12, 0.33),
+    ruin('Skull', -0.3, 0.32, 0.6), ruin('Pot2_Broken', -0.5, 0.18), ruin('Bricks', 0.15, -0.5, 2.2),
+  ],
+  // The corner of a hall: an overgrown broken arched wall, a side wall, a low wall and pots.
+  () => [
+    ruin('Floor_Diamond', -0.05, 0.12), ruin('Floor_Squares', 0.3, 0.05),
+    ruin('Wall_ArchRound_Overgrown_Broken', 0, -0.2),
+    ruin('Wall_Broken', 0.44, 0.02, Math.PI / 2),
+    ruin('Wall_Double_Broken', -0.34, 0.36, 0.5),
+    ruin('Pot1', -0.12, 0.34, 1), ruin('Pot3_Broken', 0.18, 0.38), ruin('Bricks', 0.5, 0.46, 0.4),
+  ],
+  // A fox on its plinth between a column and a stump, candles still at its feet.
+  () => [
+    ruin('Floor_Squares', 0, 0.1), ruin('Floor_Squares', -0.4, 0.1), ruin('Floor_Diamond', 0.4, 0.1),
+    ruin('Statue_Fox', 0, -0.12, 0, { k: 0.85 }),
+    ruin('Column_Round', 0.42, -0.2), ruin('Column_Round_Short', -0.42, -0.18),
+    ruin('Candles_1', 0.16, 0.18, 0.3), ruin('Pot1_Broken', -0.4, 0.32, 2), ruin('Bricks', 0.46, 0.36, 0.7),
+  ],
+];
+
+// Turn a list of placements by `a` about the tile centre (positions and facings alike).
+function turned(list, a) {
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  return list.map((d) => ({ ...d, x: d.x * c + d.z * s, z: -d.x * s + d.z * c, ry: (d.ry || 0) + a }));
+}
+
+// The buildings the ruins draw, laid out facing +z (turned to face their neighbour later).
+const COMPOSED = {
+  // A dig site: a pit of turned earth with a mosaic coming to light, a tent, a cart, tools.
+  digsite: () => [
+    { m: 'pit', x: 0.02, z: 0.22 },
+    ruin('Floor_Diamond', -0.05, 0.22, 0.2, { y: 0.012, k: 0.8 }),
+    ruin('Column_Round_Short', 0.17, 0.3, 0, { k: 0.8 }),
+    ruin('Pot1', -0.16, 0.34, 0.5, { k: 0.8 }),
+    { m: 'tent', x: -0.36, z: -0.3, ry: 0.5 },
+    ruin('Cart', 0.42, -0.26, -0.5, { k: 0.75 }),
+    { m: 'wheelbarrow', x: -0.46, z: 0.25, ry: 2.4 },
+    { m: 'crate_A_big', x: 0.02, z: -0.44, ry: 0.3 },
+    { m: 'sack', x: 0.15, z: -0.5, ry: 1 },
+    ruin('Bricks', 0.44, 0.3, 0.6, { k: 0.7 }),
+    ruin('Torch', 0.29, 0.06, 0, { y: 0.054 }),
+  ],
+  // The Archaeological Society: a small restored hall with an arched door, a portico of four
+  // columns and a blue roof, the society's fox before it.
+  society: () => {
+    const y = 0.07; // top of the plinth
+    const out = [
+      { m: 'plinth_society', x: 0, z: -0.02 },
+      ruin('Wall', 0, -0.34, 0, { y, s: [0.4, 0.27, 0.2] }),
+      ruin('Window_Open', -0.38, -0.12, -Math.PI / 2, { y, s: [0.22, 0.27, 0.2] }),
+      ruin('Window_Open', 0.38, -0.12, Math.PI / 2, { y, s: [0.22, 0.27, 0.2] }),
+      ruin('Wall_ArchRound', 0, 0.1, 0, { y, s: [0.2, 0.135, 0.2] }),
+      ruin('Doors_RoundArch', 0, 0.09, 0, { y, k: 0.7 }),
+      { m: 'slab_society', x: 0, z: -0.02, y: y + 0.54 },
+      { m: 'roof_society', x: 0, z: -0.02, y: y + 0.59, ry: Math.PI / 2 },
+      ruin('Statue_Fox', 0.42, 0.5, -0.5, { k: 0.5 }),
+      ruin('Pot1', -0.44, 0.46, 0, { k: 0.8 }),
+    ];
+    for (const x of [-0.33, -0.11, 0.11, 0.33]) out.push(ruin('Column_Round', x, 0.32, 0, { y, s: [0.17, 0.135, 0.17] }));
+    return out;
+  },
+  // The Academy: a temple of learning on a stepped plinth, six columns before shelves of books,
+  // a blue roof crowned by a dome, and the stag of the old realm beside the steps.
+  academy: () => {
+    const y = 0.07;
+    const out = [
+      { m: 'plinth_academy', x: 0, z: -0.05 },
+      ruin('Stairs', 0, 0.42, 0, { s: [0.15, 0.078, 0.06] }),
+      ruin('Wall', -0.27, -0.44, 0, { y, s: [0.27, 0.3, 0.2] }), ruin('Wall', 0.27, -0.44, 0, { y, s: [0.27, 0.3, 0.2] }),
+      ruin('Window_Open', -0.52, -0.2, -Math.PI / 2, { y, s: [0.24, 0.3, 0.2] }),
+      ruin('Window_Open', 0.52, -0.2, Math.PI / 2, { y, s: [0.24, 0.3, 0.2] }),
+      ruin('Bookcase_Full', -0.25, -0.36, 0, { y, k: 0.9 }), ruin('Bookcase_Full', 0.25, -0.36, 0, { y, k: 0.9 }),
+      ruin('Candles_1', 0, -0.2, 0, { y, k: 0.6 }),
+      { m: 'slab_academy', x: 0, z: -0.05, y: y + 0.6 },
+      { m: 'roof_academy', x: 0, z: -0.05, y: y + 0.65 },
+      { m: 'dome_academy', x: 0, z: -0.05, y: y + 0.72 },
+      ruin('Statue_Stag', -0.48, 0.52, 0.5, { k: 0.5 }),
+    ];
+    for (const x of [-0.45, -0.27, -0.09, 0.09, 0.27, 0.45]) out.push(ruin('Column_Round', x, 0.26, 0, { y, s: [0.15, 0.15, 0.15] }));
+    return out;
+  },
+};
+
 // Pile size (0, 1, 2) for a building tile, from the groups around it.
 function pileTier(state, tile, sizes) {
   const p = PILES[tile.building];
@@ -133,6 +318,7 @@ function facing(state, tile) {
     mine: (o) => o.feature === 'mountain',
     watermill: (o) => BASES[o.base].edges.includes('W'),
     watchtower: (o) => BASES[o.base].edges.includes('S'),
+    digsite: (o) => o.feature === 'ruins',
   }[tile.building];
   let road = null;
   let src = null;
@@ -166,6 +352,10 @@ function decorate(tile, info) {
       const a = -ry + Math.PI / 2;
       return { x: Math.cos(a) * d + Math.cos(a + Math.PI / 2) * side, z: Math.sin(a) * d + Math.sin(a + Math.PI / 2) * side };
     };
+    if (COMPOSED[b]) {
+      out.push(...turned(COMPOSED[b](), ry));
+      return out;
+    }
     if (b === 'watermill' || b === 'watchtower') {
       const p = along(0.25, 0);
       out.push({ m: BUILDINGS[b].model, x: p.x, z: p.z, ry });
@@ -215,6 +405,17 @@ function decorate(tile, info) {
     case 'mountain': {
       const m = ['mountain_A_grass', 'mountain_B_grass', 'mountain_C_grass', 'mountain_A_grass_trees', 'mountain_C_grass_trees'];
       out.push({ m: m[Math.floor(R() * m.length)], x: 0, z: 0, ry: rot60() });
+      break;
+    }
+    case 'ruins': {
+      const layout = RUIN_LAYOUTS[Math.floor(R() * RUIN_LAYOUTS.length)]();
+      out.push(...turned(layout, rot60() + (R() - 0.5) * 0.4));
+      // A rock or a small tree or two at the rim, kept low so the ruins stay in view.
+      const rim = ['rock_single_A', 'rock_single_C', 'rock_single_E', 'tree_single_A', 'tree_single_B'];
+      for (let i = 1 + Math.floor(R() * 2); i > 0; i--) {
+        const a = R() * TAU;
+        out.push({ m: rim[Math.floor(R() * rim.length)], x: Math.cos(a) * 0.76, z: Math.sin(a) * 0.76, ry: R() * TAU, s: 0.65 });
+      }
       break;
     }
     case 'meadow':
@@ -313,7 +514,9 @@ export class View {
     let done = 0;
     await Promise.all(
       MODELS.map(async (name) => {
-        const gltf = await loader.loadAsync(`models/${name}.gltf`);
+        const ruins = name.startsWith('ruins/');
+        const gltf = await loader.loadAsync(`models/${name}.${ruins ? 'glb' : 'gltf'}`);
+        if (ruins) restyleRuin(gltf.scene);
         gltf.scene.traverse((o) => {
           if (o.isMesh) {
             o.castShadow = !name.startsWith('hex_') && !name.startsWith('cloud');
@@ -324,6 +527,13 @@ export class View {
         onProgress?.(++done / MODELS.length);
       }),
     );
+    for (const [name, make] of Object.entries(SHAPES)) {
+      const g = make();
+      g.traverse((o) => {
+        if (o.isMesh) o.castShadow = o.receiveShadow = true;
+      });
+      this.templates[name] = g;
+    }
     this.makeClouds();
     this.thumbs = new Thumbs(this);
   }
@@ -357,9 +567,10 @@ export class View {
     const top = new THREE.Group();
     for (const d of decorate(tile, info)) {
       const m = this.model(d.m);
-      m.position.set(d.x, 0, d.z);
-      m.rotation.y = d.ry || 0;
-      if (d.s) m.scale.setScalar(d.s);
+      m.position.set(d.x, d.y || 0, d.z);
+      m.rotation.set(d.rx || 0, d.ry || 0, d.rz || 0);
+      if (Array.isArray(d.s)) m.scale.set(...d.s);
+      else if (d.s) m.scale.setScalar(d.s);
       top.add(m);
     }
     if (tile.feature === 'field') {

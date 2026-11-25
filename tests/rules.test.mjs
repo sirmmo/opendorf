@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   newGame, place, discard, preview, legalSpots, canPlace, edgeAt, fits, groups, key, START_SUPPLY,
-  choose, isSandbox, isTileKind,
+  choose, isSandbox, isTileKind, charterText, charterProgress,
 } from '../js/rules.js';
-import { BASES, BAG, PALETTE, FEATURES } from '../js/tiles.js';
+import { BASES, BAG, PALETTE, FEATURES, BUILDINGS, WORKSHOPS, workshopsFor, tileName } from '../js/tiles.js';
 
 // Plays a whole game with a simple greedy player: take the spot the preview scores best.
 function autoplay(seed, limit = 400) {
@@ -264,4 +264,156 @@ test('a sandbox plays out the same way from the same seed and choices', () => {
     return s;
   };
   assert.deepEqual(run(), run());
+});
+
+// ---------- ruins ----------
+
+// A game with hand-laid tiles: `lay` puts each tile through `place`, so buildings and charters
+// follow the normal rules.
+function handGame(seed) {
+  const s = newGame(seed);
+  s.charters = [];
+  const lay = (q, r, feature, extra = {}) => {
+    s.queue = [{ base: 'grass', feature, v: 1, ...extra }];
+    s.supply = 99;
+    const ev = place(s, q, r, 0);
+    assert.ok(ev, `lay ${feature} at ${q},${r}`);
+    return ev;
+  };
+  const built = (b) => Object.values(s.tiles).filter((t) => t.building === b).length;
+  return { s, lay, built };
+}
+const builds = (ev) => ev.filter((e) => e.type === 'build').map((e) => e.building);
+
+test('ruins are a land feature in the bag, the palette and the names', () => {
+  assert.ok(FEATURES.includes('ruins'));
+  const w = BAG.find((b) => b.feature === 'ruins');
+  assert.ok(w && w.base === 'grass' && w.w > 0 && w.w < BAG.find((b) => b.feature === 'mountain').w + 1);
+  assert.ok(PALETTE.some((p) => p.feature === 'ruins' && p.group === 'land'));
+  assert.equal(tileName({ base: 'grass', feature: 'ruins' }), 'Ruins');
+  assert.ok(isTileKind({ base: 'grass', feature: 'ruins' }));
+  assert.equal(isTileKind({ base: 'road_A', feature: 'ruins' }), false);
+});
+
+test('ruins join into groups and earn the same-land bonus', () => {
+  const { s, lay } = handGame('ruins-group');
+  lay(1, 0, 'meadow');
+  lay(2, 0, 'ruins');
+  const ev = lay(3, 0, 'ruins');
+  assert.equal(ev[0].pts, 1 + 2);
+  assert.equal(groups(s, 'ruins').length, 1);
+  assert.equal(groups(s, 'ruins')[0].length, 2);
+});
+
+test('a house next to ruins becomes a dig site: one for the first ruin, then one per two', () => {
+  const dig = WORKSHOPS.find((w) => w.building === 'digsite');
+  assert.deepEqual([0, 1, 2, 3, 4, 5].map((n) => workshopsFor(dig, n)), [0, 1, 1, 2, 2, 3]);
+  // The old workshops keep their old counts.
+  const wood = WORKSHOPS.find((w) => w.building === 'lumbermill');
+  assert.deepEqual([2, 3, 5, 6].map((n) => workshopsFor(wood, n)), [0, 1, 1, 2]);
+
+  const { s, lay, built } = handGame('dig');
+  const ev = lay(1, 0, 'ruins');
+  assert.deepEqual(builds(ev), ['digsite']);
+  assert.equal(s.tiles[key(0, 0)].building, 'digsite');
+  const b = ev.find((e) => e.type === 'build');
+  assert.equal(b.pts, BUILDINGS.digsite.pts);
+  // A free house by the same ruins gets nothing more, nor does a second ruin tile; a third does.
+  lay(2, -1, 'village');
+  assert.equal(built('digsite'), 1);
+  lay(2, 0, 'ruins');
+  assert.equal(built('digsite'), 1, 'two ruins tiles feed one dig site');
+  lay(3, -1, 'ruins');
+  assert.equal(built('digsite'), 2, 'three feed two');
+  assert.equal(s.tiles[key(2, -1)].building, 'digsite');
+});
+
+test('a dig site and a tavern found an Archaeological Society; with a church, an Academy', () => {
+  const { s, lay, built } = handGame('society');
+  // Ruins east of the hearth: the hearth becomes a dig site.
+  assert.deepEqual(builds(lay(1, 0, 'ruins')), ['digsite']);
+  // Grow the village westwards to five houses: a well, then a tavern, then the Society.
+  lay(-1, 0, 'village');
+  const atThree = builds(lay(-2, 0, 'village'));
+  assert.deepEqual(atThree, ['well']);
+  lay(-1, 1, 'village');
+  const atFive = builds(lay(-2, 1, 'village'));
+  assert.deepEqual(atFive, ['tavern', 'society']);
+  assert.equal(built('society'), 1);
+  assert.equal(built('academy'), 0);
+  // Without a church there is no Academy, however big the village...
+  for (const [q, r] of [[-3, 0], [-3, 1]]) lay(q, r, 'village');
+  assert.equal(built('market'), 1);
+  assert.equal(built('academy'), 0);
+  // ...and at ten tiles the church comes, and the Academy with it (given a free house).
+  for (const [q, r] of [[-3, 2], [-2, 2], [-1, 2]]) lay(q, r, 'village');
+  assert.equal(built('church'), 1);
+  assert.equal(built('academy'), 1);
+  // One of each per village.
+  for (const [q, r] of [[-4, 1], [-4, 2], [0, 2]]) lay(q, r, 'village');
+  assert.equal(built('society'), 1);
+  assert.equal(built('academy'), 1);
+  const pts = BUILDINGS.society.pts + BUILDINGS.academy.pts;
+  assert.ok(s.score >= pts);
+});
+
+test('a market will do instead of a tavern, but a village without a dig site founds nothing', () => {
+  // No ruins at all: a village of seven has a tavern and a market but no Society.
+  const plain = handGame('no-ruins');
+  for (const [q, r] of [[-1, 0], [-2, 0], [-1, 1], [-2, 1], [-3, 0], [-3, 1]]) plain.lay(q, r, 'village');
+  assert.equal(plain.built('market'), 1);
+  assert.equal(plain.built('society'), 0);
+  // The tavern taken out of the picture: the market alone founds the Society.
+  const m = handGame('market');
+  for (const [q, r] of [[-1, 0], [-2, 0], [-1, 1], [-2, 1], [-3, 0], [-3, 1]]) m.lay(q, r, 'village');
+  for (const t of Object.values(m.s.tiles)) if (t.building === 'tavern') delete t.building;
+  assert.equal(m.built('market'), 1);
+  m.lay(1, 0, 'ruins'); // the dig site goes on a house next to the ruins, then the Society
+  assert.equal(m.built('digsite'), 1);
+  assert.equal(m.built('society'), 1);
+});
+
+test('a ruins charter counts ruins anywhere in the realm', () => {
+  const { s, lay } = handGame('ruins-charter');
+  s.charters = [{ id: 99, kind: 'ruins', n: 2, pts: 18, tiles: 3 }];
+  assert.equal(charterText(s.charters[0]), 'Uncover ruins across 2 tiles');
+  lay(1, 0, 'ruins');
+  assert.equal(charterProgress(s, s.charters[0]), 1);
+  const score = s.score;
+  const ev = lay(-1, 0, 'ruins'); // not touching the first ruin
+  assert.ok(ev.some((e) => e.type === 'charter' && e.text === 'Uncover ruins across 2 tiles'));
+  assert.ok(s.score - score >= 18);
+  assert.notEqual(s.charters[0].id, 99);
+});
+
+test('new ruins charters ask for one or two more ruins', () => {
+  let seen = 0;
+  for (let i = 0; i < 60 && seen < 5; i++) {
+    const s = newGame('rc' + i);
+    s.charters = [{ id: 1, kind: 'forest', n: 1, pts: 1, tiles: 0 }];
+    s.queue = [{ base: 'grass', feature: 'forest', v: 1 }];
+    place(s, 1, 0, 0);
+    const c = s.charters[0];
+    if (c.kind !== 'ruins') continue;
+    seen++;
+    assert.ok(c.n >= 1 && c.n <= 2, `n ${c.n}`);
+    assert.equal(c.pts, 10 + 4 * c.n);
+  }
+  assert.ok(seen > 0, 'some new charter is a ruins charter');
+});
+
+test('an old save without ruins keeps playing', () => {
+  // A game saved before ruins existed: no ruins tiles, charters or buildings anywhere.
+  const s = autoplay('old-save', 20);
+  const old = JSON.parse(JSON.stringify(s), (k, v) => (v === 'ruins' && k === 'feature' ? 'meadow' : v));
+  old.charters = old.charters.map((c) => (c.kind === 'ruins' ? { id: c.id, kind: 'forest', n: 99, pts: 10, tiles: 3 } : c));
+  for (const t of Object.values(old.tiles)) if (['digsite', 'society', 'academy'].includes(t.building)) delete t.building;
+  // It plays on to the end, and ruins can turn up in it from now on.
+  for (let i = 0; i < 400 && !old.over; i++) {
+    const spot = legalSpots(old, old.queue[0])[0];
+    if (!spot) discard(old);
+    else assert.ok(place(old, spot.q, spot.r, spot.rots[0]));
+  }
+  assert.equal(old.over, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(old)), old);
 });

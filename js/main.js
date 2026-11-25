@@ -165,7 +165,7 @@ function refreshGhost() {
       const p = previewAt(c.q, c.r, shownRot);
       const lines = [];
       for (const e of p.events) {
-        if (e.type === 'build') lines.push(`<span class="b">raises a ${BUILDINGS[e.building].name}</span>`);
+        if (e.type === 'build') lines.push(`<span class="b">raises ${aOrAn(BUILDINGS[e.building].name)}</span>`);
         if (e.type === 'charter') lines.push(`<span class="b">fulfils a charter</span>`);
       }
       tip.innerHTML = `<span class="pts">+${p.pts}</span>${lines.join('')}`;
@@ -177,6 +177,8 @@ function refreshGhost() {
   $('bPlace').hidden = !(touchMode && selected && legal);
   view.thumbs.draw($('thumb0'), piece, shownRot);
 }
+
+const aOrAn = (name) => (/^[AEIOU]/i.test(name) ? 'an ' : 'a ') + name;
 
 function spotList() {
   return [...spots.keys()].map((k) => {

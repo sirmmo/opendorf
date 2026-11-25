@@ -52,7 +52,8 @@ export const BASES = {
 };
 
 // Features sit in the middle of plain grass tiles.
-export const FEATURES = ['forest', 'field', 'village', 'meadow', 'mountain'];
+// Ruins are the broken walls and columns of an older realm, waiting for someone to dig.
+export const FEATURES = ['forest', 'field', 'village', 'meadow', 'mountain', 'ruins'];
 
 // What the realm's carts bring, with relative weights.
 export const BAG = [
@@ -61,6 +62,7 @@ export const BAG = [
   { base: 'grass', feature: 'village', w: 16 },
   { base: 'grass', feature: 'meadow', w: 6 },
   { base: 'grass', feature: 'mountain', w: 4 },
+  { base: 'grass', feature: 'ruins', w: 3.5 },
 
   { base: 'road_A', w: 4 },
   { base: 'road_B', w: 3 },
@@ -150,15 +152,37 @@ export const BUILDINGS = {
   blacksmith: { name: 'Blacksmith', pts: 15, tiles: 3, model: 'building_blacksmith_blue' },
   church: { name: 'Church', pts: 20, tiles: 4, model: 'building_church_blue' },
   castle: { name: 'Castle', pts: 40, tiles: 6, model: 'building_castle_blue' },
+  // Ruins and the scholars they draw. No single model: the view composes them from the
+  // Quaternius ruins pieces and a few KayKit props.
+  digsite: { name: 'Dig site', pts: 10, tiles: 2 },
+  society: { name: 'Archaeological Society', pts: 15, tiles: 3 },
+  academy: { name: 'Academy', pts: 25, tiles: 4 },
 };
 
-// A workshop appears on a house next to a group of the right land, one per `per` tiles.
+// A workshop appears on a house next to a group of the right land, one per `per` tiles. With
+// `first`, the first one comes sooner: at `first` tiles, then one more every `per` tiles.
 export const WORKSHOPS = [
   { building: 'lumbermill', group: 'forest', per: 3 },
   { building: 'windmill', group: 'field', per: 3 },
   { building: 'watermill', group: 'river', per: 3 },
   { building: 'mine', group: 'mountain', per: 1 },
   { building: 'watchtower', group: 'sea', per: 4 },
+  { building: 'digsite', group: 'ruins', first: 1, per: 2 },
+];
+
+// How many workshops a group of `size` tiles feeds.
+export function workshopsFor(w, size) {
+  const first = w.first ?? w.per;
+  return size < first ? 0 : 1 + Math.floor((size - first) / w.per);
+}
+
+// Buildings a village raises once it holds the right others (each on a free house, one each):
+// a blacksmith for a lumbermill and a mine; an Archaeological Society for a dig site and a
+// tavern or a market; an Academy for a Society and a church.
+export const COMBOS = [
+  { building: 'blacksmith', needs: [['lumbermill'], ['mine']] },
+  { building: 'society', needs: [['digsite'], ['tavern', 'market']] },
+  { building: 'academy', needs: [['society'], ['church']] },
 ];
 
 // Village milestones: one of each per village, once it is big enough.
