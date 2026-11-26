@@ -72,7 +72,27 @@ somewhere else, open the game with `?origin=lon,lat` (for example `?origin=11.34
 | Rotate the view | right drag, `Q` / `E` | twist with two fingers |
 | Zoom | wheel, `+` / `-` | pinch |
 | Undo, discard, center | `Z`, `X`, `C` | ↶ and crosshair buttons, *Discard* |
+| Achievements | `L` (again, or `Esc`, to close) | trophy button |
 | Choose a tile (sandbox) | click it in the palette, `T` / `Shift+T` for the next / previous | tap it in the strip above the tray (swipe for more) |
+
+## Achievements
+
+Fifteen achievements (two of them secret) and five stats, listed in `achievements.json` at the
+root. The trophy button (top right) or `L` shows them; an unlock shows a toast. They are kept and
+reported by the openachievements library (`vendor/openachievements/`: its browser host and
+WebAssembly core): saved in `localStorage` (`openachievements:opendorf`)
+and, on Wavedash, sent to Wavedash as well.
+
+Only normal realms earn them: the sandbox counts nothing (but the map download). `js/main.js`
+reports after every move (`tally`): the realm's tiles, buildings and charters as running totals,
+its renown as a best, the end of a realm, and one-off unlocks (castle, Academy, every trade, a
+river into the sea, the map download). What a realm has counted is kept in the save
+(`state.ach`) and survives undo, so a move undone and made again is not counted twice.
+
+To add one: add it to `achievements.json` (with `stat` and `threshold` for a count, or none for
+a one-off, then `window.openachievements?.unlock('ID')` where it happens), check it with the
+openachievements CLI (`openachievements check achievements.json`), and import the list in the
+Wavedash Developer Portal (`openachievements wavedash achievements.json` writes the import JSON).
 
 ## Development
 
@@ -90,7 +110,8 @@ node tools/balance.mjs 1 2 3      # greedy games per seed: length, score, buildi
 | `js/rules.js` | The game: pure, seeded and JSON-serialisable (`newGame`, `place`, `preview`, `discard`, and `choose` for the sandbox) |
 | `js/view.js` | three.js board, ghost tile, spots, construction animation, hand thumbnails |
 | `js/geojson.js`, `js/geo.js` | GeoJSON export: projection and merging tiles into outlines |
-| `js/main.js` | Input, HUD, saving, undo, map download |
+| `js/main.js` | Input, HUD, saving, undo, map download, achievements |
+| `achievements.json`, `vendor/openachievements/` | Achievements and stats; the openachievements browser host and its `.wasm` |
 | `tools/edges.py`, `tools/heights.py` | Measure which tile edges carry road, river or sea, and the height of each corner, from the KayKit meshes |
 | `models/` | The subset of the KayKit packs the game uses (glTF + each pack's shared texture); `models/ruins/` the Quaternius ruins pieces (GLB, flat colours) |
 
@@ -106,6 +127,7 @@ directly in Node.
   [Ultimate Modular Ruins Pack](https://quaternius.com/packs/ultimatemodularruins.html) by
   [Quaternius](https://quaternius.com), CC0 (`models/ruins/License.txt`), converted to GLB.
 - [three.js](https://threejs.org), MIT (`vendor/three-LICENSE.txt`).
+- openachievements, MIT or Apache-2.0 (`vendor/openachievements/LICENSE-MIT.txt`).
 - Fonts: Cinzel and Fredoka from Google Fonts (OFL).
 
 ## License

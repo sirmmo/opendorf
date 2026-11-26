@@ -1,0 +1,40 @@
+{
+  "game": "opendorf",
+  "stats": [
+    { "id": "tiles_laid", "name": "Tiles laid" },
+    { "id": "buildings_raised", "name": "Buildings raised" },
+    { "id": "charters_fulfilled", "name": "Royal charters fulfilled" },
+    { "id": "realms_completed", "name": "Realms completed" },
+    { "id": "best_renown", "name": "Best renown in one realm", "kind": "best" }
+  ],
+  "achievements": [
+    { "id": "BREAKING_GROUND", "title": "Breaking Ground", "description": "Lay 10 tiles.",
+      "stat": "tiles_laid", "threshold": 10 },
+    { "id": "PUT_TO_WORK", "title": "Put to Work", "description": "Raise your first building.",
+      "stat": "buildings_raised", "threshold": 1 },
+    { "id": "BY_ROYAL_CHARTER", "title": "By Royal Charter", "description": "Fulfil a royal charter.",
+      "stat": "charters_fulfilled", "threshold": 1 },
+    { "id": "REALM_COMPLETE", "title": "Realm Complete", "description": "Lay the last tile of a realm.",
+      "stat": "realms_completed", "threshold": 1 },
+    { "id": "RENOWNED", "title": "Renowned", "description": "Earn 500 renown in one realm.",
+      "stat": "best_renown", "threshold": 500 },
+    { "id": "EVERY_TRADE", "title": "Every Trade", "description": "Have a lumbermill, windmill, watermill, mine and watchtower in one realm." },
+    { "id": "CASTLE_ON_THE_HILL", "title": "Castle on the Hill", "description": "Grow a village big enough for a castle." },
+    { "id": "SEAT_OF_LEARNING", "title": "Seat of Learning", "description": "Open an Academy." },
+    { "id": "LEGENDARY_REALM", "title": "Legendary Realm", "description": "Earn 1,000 renown in one realm.",
+      "stat": "best_renown", "threshold": 1000 },
+    { "id": "FIVE_HUNDRED_TILES", "title": "Five Hundred Tiles", "description": "Lay 500 tiles.",
+      "stat": "tiles_laid", "threshold": 500 },
+    { "id": "MASTER_BUILDER", "title": "Master Builder", "description": "Raise 100 buildings.",
+      "stat": "buildings_raised", "threshold": 100 },
+    { "id": "CROWNS_FAVOURITE", "title": "The Crown's Favourite", "description": "Fulfil 25 royal charters.",
+      "stat": "charters_fulfilled", "threshold": 25 },
+    { "id": "SEASONED_RULER", "title": "Seasoned Ruler", "description": "Complete 10 realms.",
+      "stat": "realms_completed", "threshold": 10 },
+    { "id": "RIVER_MOUTH", "title": "River Mouth", "description": "Let a river flow into the sea.", "secret": true },
+    { "id": "CARTOGRAPHER", "title": "Cartographer", "description": "Download a map of your realm.", "secret": true }
+  ],
+  "platforms": {
+    "wavedash": { "game_id": "j97dha4t7tn1hf1sqpsnwtcgm58jxnnp" }
+  }
+}

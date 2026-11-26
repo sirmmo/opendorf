@@ -222,6 +222,7 @@ function placeAt(c, forceRot) {
   selected = null;
   view.sync(state);
   react(events);
+  tally(events);
   save();
   onTurn();
 }
@@ -233,6 +234,7 @@ function discardTile() {
   if (!events) return;
   undoJSON = before;
   toast('Tile thrown away');
+  tally(events);
   hud();
   save();
   onTurn();
@@ -240,7 +242,9 @@ function discardTile() {
 
 function undo() {
   if (!undoJSON) return;
+  const ach = state.ach; // what was counted stays counted (see tally)
   state = JSON.parse(undoJSON);
+  if (ach) state.ach = ach;
   undoJSON = null;
   $('over').hidden = true;
   view.sync(state, { animate: false });
@@ -263,6 +267,61 @@ function react(events) {
   }
   bump('score');
   if (events.some((e) => e.type === 'build' || e.type === 'charter')) bump('supply');
+}
+
+// ---------- achievements ----------
+
+// achievements.json lists them; vendor/openachievements keeps the player's progress and reports
+// it (to Wavedash, when the game runs there). Only normal realms earn them: in the sandbox every
+// tile is chosen, so it counts nothing (but the map download). What a realm has already counted
+// travels with it in `state.ach`, which undo leaves alone, so a move undone and made again is
+// not counted twice.
+const TRADES = ['lumbermill', 'windmill', 'watermill', 'mine', 'watchtower'];
+
+function tally(events) {
+  const oa = window.openachievements;
+  if (!oa || R.isSandbox(state)) return;
+  const m = state.ach || (state.ach = { placed: 0, built: 0, charters: 0, renown: 0, over: false });
+  const count = (stat, k) => {
+    const n = state.stats[k];
+    if (n > m[k]) { oa.add(stat, n - m[k]); m[k] = n; }
+  };
+  count('tiles_laid', 'placed');
+  count('buildings_raised', 'built');
+  count('charters_fulfilled', 'charters');
+  if (state.score > m.renown) { oa.set('best_renown', state.score); m.renown = state.score; }
+  if (state.over && !m.over) { m.over = true; oa.add('realms_completed', 1); }
+  for (const e of events) {
+    if (e.type === 'place' && joinsRiverToSea(e.q, e.r)) oa.unlock('RIVER_MOUTH');
+    if (e.type !== 'build') continue;
+    if (e.building === 'castle') oa.unlock('CASTLE_ON_THE_HILL');
+    if (e.building === 'academy') oa.unlock('SEAT_OF_LEARNING');
+    if (TRADES.includes(e.building) && TRADES.every((b) => R.countBuilt(state, b) > 0)) oa.unlock('EVERY_TRADE');
+  }
+}
+
+// Does the tile at q, r meet a neighbour river-to-sea, on either side?
+function joinsRiverToSea(q, r) {
+  const t = R.tileAt(state, q, r);
+  return R.neighbours(q, r).some((n) => {
+    const o = R.tileAt(state, n.q, n.r);
+    const pair = o ? R.edgeAt(t, n.k) + R.edgeAt(o, (n.k + 3) % 6) : '';
+    return pair === 'WS' || pair === 'SW';
+  });
+}
+
+const achievementsOpen = () => !!document.querySelector('.oa-shade');
+
+// The list, over the game; L or its button opens it, L or Esc closes it.
+function toggleAchievements() {
+  const oa = window.openachievements;
+  if (!oa) return;
+  if (achievementsOpen()) {
+    document.querySelector('.oa-shade .oa-close')?.click();
+    return;
+  }
+  // Before the library has loaded, showList does nothing: wait for it.
+  Promise.resolve(oa.ready).then(() => { if (!achievementsOpen()) oa.showList(); });
 }
 
 // ---------- sandbox palette ----------
@@ -555,7 +614,12 @@ canvas.addEventListener('wheel', (e) => {
 window.addEventListener('keydown', (e) => {
   if (e.target.closest?.('input,textarea')) return;
   const k = e.key.toLowerCase();
-  const overlayOpen = !$('help').hidden || !$('menu').hidden;
+  if (k === 'l' && $('help').hidden && $('menu').hidden) {
+    toggleAchievements();
+    e.preventDefault();
+    return;
+  }
+  const overlayOpen = !$('help').hidden || !$('menu').hidden || achievementsOpen();
   if (k === 'escape') {
     $('help').hidden = true;
     $('menu').hidden = true;
@@ -599,6 +663,7 @@ $('bPlace').onclick = () => placeAt(selected);
 $('bDiscard').onclick = discardTile;
 $('bUndo').onclick = undo;
 $('bCenter').onclick = () => view.frame(state);
+$('bAch').onclick = toggleAchievements;
 $('bHelp').onclick = () => { $('help').hidden = false; };
 $('bHelpClose').onclick = () => { $('help').hidden = true; store.set('opendorf.seenHelp', '1'); };
 $('bMenu').onclick = () => { hud(); $('menu').hidden = false; };
@@ -631,6 +696,7 @@ function downloadGeo() {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  window.openachievements?.unlock('CARTOGRAPHER');
 }
 $('bGeo').onclick = downloadGeo;
 $('bOverGeo').onclick = downloadGeo;

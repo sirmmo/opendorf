@@ -9,6 +9,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="js/wavedash.js"></script>
+<script src="vendor/openachievements/openachievements.js"></script>
+<script>OpenAchievements.start({ manifest: 'achievements.json', wasm: 'vendor/openachievements/openachievements.wasm' });</script>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -30,6 +32,7 @@
   <div id="topright">
     <button class="icon" id="bUndo" title="Undo (Z)" aria-label="Undo">↶</button>
     <button class="icon" id="bCenter" title="Center the view (C)" aria-label="Center the view"><svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.5"/><path d="M12 1.5v6M12 16.5v6M1.5 12h6M16.5 12h6"/><circle class="dot" cx="12" cy="12" r="1.6"/></svg></button>
+    <button class="icon" id="bAch" title="Achievements (L)" aria-label="Achievements"><svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h10v5.5a5 5 0 0 1-10 0z"/><path d="M7 5.5H3.5v1.2a3.8 3.8 0 0 0 4.1 3.8M17 5.5h3.5v1.2a3.8 3.8 0 0 1-4.1 3.8M12 14v4.5M8 20.5h8"/></svg></button>
     <button class="icon" id="bHelp" title="How to play (H)" aria-label="How to play">?</button>
     <button class="icon" id="bMenu" title="Menu" aria-label="Menu">☰</button>
   </div>
@@ -72,7 +75,7 @@
     <div class="controls">
       <div><b>Mouse</b> · click to lay · <kbd>R</kbd> or right click to turn · drag to move · right drag to rotate the view · wheel to zoom</div>
       <div><b>Touch</b> · tap a spot, tap again to lay · ⟲ ⟳ to turn · drag, pinch and twist the view</div>
-      <div><b>Keys</b> · <kbd>Z</kbd> undo · <kbd>X</kbd> discard · <kbd>C</kbd> center · <kbd>Q</kbd>/<kbd>E</kbd> rotate the view · <kbd>WASD</kbd> move</div>
+      <div><b>Keys</b> · <kbd>Z</kbd> undo · <kbd>X</kbd> discard · <kbd>C</kbd> center · <kbd>L</kbd> achievements · <kbd>Q</kbd>/<kbd>E</kbd> rotate the view · <kbd>WASD</kbd> move</div>
       <div><b>Sandbox</b> · menu → <i>Sandbox</i> to choose every tile yourself, with no end · <kbd>T</kbd> next tile</div>
     </div>
     <button class="btn" id="bHelpClose">Start building</button>

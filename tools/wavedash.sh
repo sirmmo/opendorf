@@ -2,7 +2,8 @@
 # Builds OpenDorf for Wavedash (https://wavedash.com) and uploads it as a new build:
 #   sh tools/wavedash.sh [opendorf]
 # wavedash.toml (at the root) says where: _wavedash/, filled here the way the Pages workflow
-# assembles the site (index.html, style.css, js/, vendor/, models/; no tests, tools or docs).
+# assembles the site (index.html, style.css, achievements.json, js/, vendor/, models/; no tests,
+# tools or docs).
 # With the `wavedash` CLI on PATH it then runs `wavedash build push` (WAVEDASH_TOKEN from the
 # environment); without it, or with WAVEDASH_DRY_RUN=1, it only says what it would push.
 # Publishing a build is a separate step. The game id: WAVEDASH_GAME_ID_OPENDORF or WAVEDASH_GAME_ID,
@@ -62,5 +63,5 @@ push() {
 
 rm -rf _wavedash
 mkdir _wavedash
-cp -r index.html style.css js vendor models _wavedash/
+cp -r index.html style.css achievements.json js vendor models _wavedash/
 push opendorf . _wavedash
