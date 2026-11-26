@@ -238,6 +238,9 @@ export const CLEARS_CAMPS = ['watchtower', 'barracks'];
 export const DUNGEON_MOUNTAIN = 3;
 export const DELVE_URL = 'https://ingmmo.com/opendelve/';
 
+// A tavern can be run as an inn in OpenInn (The Gilded Mimic, its medieval ruleset).
+export const INN_URL = 'https://ingmmo.com/openinn/play/';
+
 // Village milestones: one of each per village, once it is big enough.
 export const CIVIC = [
   { building: 'well', size: 3 },

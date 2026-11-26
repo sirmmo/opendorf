@@ -6,7 +6,7 @@
 // `metersPerUnit` metres (default 50, so a tile is 100 m across).
 
 import { BASES, BUILDINGS, CAMPS } from './tiles.js';
-import { DIRS, dungeonLink, edgeAt, groups, key } from './rules.js';
+import { DIRS, dungeonLink, innLink, edgeAt, groups, key } from './rules.js';
 import { projector, dissolve, polygonGeometry, feature } from './geo.js';
 
 const SQ3 = Math.sqrt(3);
@@ -66,6 +66,7 @@ export function toGeoJSON(state, { origin = [0, 0], metersPerUnit = 50 } = {}) {
     if (t.building) {
       features.push(feature({ type: 'Point', coordinates: project(center(t)) }, {
         layer: 'building', building: t.building, name: BUILDINGS[t.building].name, q: t.q, r: t.r,
+        ...(t.building === 'tavern' ? { url: innLink(state, t) } : {}),
       }));
     } else if (t.feature === 'village') {
       features.push(feature({ type: 'Point', coordinates: project(center(t)) }, { layer: 'building', building: 'houses', name: 'Houses', q: t.q, r: t.r }));

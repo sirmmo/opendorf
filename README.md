@@ -44,7 +44,9 @@ around them to work.
 6. **The dungeon.** The first mountain range of three tiles in a realm opens a dungeon mouth
    on its flank. Click (or tap) it for the way down: it opens
    [OpenDelve](https://ingmmo.com/opendelve/) with a dungeon seeded by the realm and the tile
-   (`?seed=<realm seed>-<q>-<r>`).
+   (`?seed=<realm seed>-<q>-<r>`). In the same way, click (or tap) a village's **tavern** to run it
+   as an inn: it opens [OpenInn](https://ingmmo.com/openinn/play/) (The Gilded Mimic) with an inn
+   seeded by the realm and the tile.
 7. **Ruins** of an older realm turn up now and then (about one tile in 29): broken arches,
    columns, walls and statues. A house next to ruins becomes a **dig site** (10): the first
    ruin tile feeds one, then every two more feed another. A village with a dig site and a
@@ -82,7 +84,7 @@ FeatureCollection. Each feature has a `layer` property:
 | `realm` | (Multi)Polygon | Outline of the whole realm |
 | `area` | (Multi)Polygon | Each forest, farmland, village, mountain range, ruins, hills, wetland (marsh) and sea, merged (`kind`, `tiles`) |
 | `road`, `waterway` | MultiLineString | Each road and river network |
-| `building` | Point | Workshops, town buildings, the witch's hut, churchyards and houses (`building`, `name`) |
+| `building` | Point | Workshops, town buildings, the witch's hut, churchyards and houses (`building`, `name`); a tavern carries its OpenInn `url` |
 | `site` | Point | Camps and the dungeon mouth (`site`: `bandit_camp`, `wolf_den` or `dungeon`; `name`; the dungeon's OpenDelve `url`) |
 | `tile` | Polygon | Every tile: `q`, `r`, `base`, `model`, `rotation`, `edges`, `feature`, `building`, `camp`, `dungeon`, `order` |
 

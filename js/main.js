@@ -599,11 +599,21 @@ function showDungeon(t) {
   $('dungeon').hidden = false;
 }
 
+// A tavern: a small card to run it as an inn, in OpenInn.
+function showInn(t) {
+  $('innLink').href = R.innLink(state, t);
+  $('inn').hidden = false;
+}
+
 function tap(c) {
   if (!c) return;
   const t = R.tileAt(state, c.q, c.r);
   if (t?.dungeon) {
     showDungeon(t);
+    return;
+  }
+  if (t?.building === 'tavern') {
+    showInn(t);
     return;
   }
   if (!touchMode) {
@@ -627,16 +637,17 @@ canvas.addEventListener('wheel', (e) => {
 window.addEventListener('keydown', (e) => {
   if (e.target.closest?.('input,textarea')) return;
   const k = e.key.toLowerCase();
-  if (k === 'l' && $('help').hidden && $('menu').hidden && $('dungeon').hidden) {
+  if (k === 'l' && $('help').hidden && $('menu').hidden && $('dungeon').hidden && $('inn').hidden) {
     toggleAchievements();
     e.preventDefault();
     return;
   }
-  const overlayOpen = !$('help').hidden || !$('menu').hidden || !$('dungeon').hidden || !!window.openachievements?.isListOpen();
+  const overlayOpen = !$('help').hidden || !$('menu').hidden || !$('dungeon').hidden || !$('inn').hidden || !!window.openachievements?.isListOpen();
   if (k === 'escape') {
     $('help').hidden = true;
     $('menu').hidden = true;
     $('dungeon').hidden = true;
+    $('inn').hidden = true;
     selected = null;
     refreshGhost();
     return;
@@ -719,7 +730,9 @@ $('bOverRestart').onclick = () => startGame(state.seed);
 $('bOverLook').onclick = () => { $('over').hidden = true; view.frame(state); };
 $('bDungeonClose').onclick = () => { $('dungeon').hidden = true; };
 $('dungeonLink').onclick = () => { $('dungeon').hidden = true; };
-for (const id of ['help', 'menu', 'dungeon']) {
+$('bInnClose').onclick = () => { $('inn').hidden = true; };
+$('innLink').onclick = () => { $('inn').hidden = true; };
+for (const id of ['help', 'menu', 'dungeon', 'inn']) {
   $(id).addEventListener('click', (e) => {
     if (e.target.id === id) $(id).hidden = true;
   });

@@ -8,7 +8,7 @@
 
 import {
   BASES, BAG, BUILDINGS, FEATURES, WORKSHOPS, CIVIC, COMBOS, REACH, WITCH_MARSH, CAMPS, CLEARS_CAMPS, DUNGEON_MOUNTAIN,
-  DELVE_URL, workshopsFor, compatible, cornersAgree, needsWater,
+  DELVE_URL, INN_URL, workshopsFor, compatible, cornersAgree, needsWater,
 } from './tiles.js';
 
 export const DIRS = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]];
@@ -466,6 +466,12 @@ function campGroups(state, land) {
 // A link to the dungeon under the mountain: OpenDelve, seeded by the realm and the tile.
 export function dungeonLink(state, tile) {
   return `${DELVE_URL}?seed=${encodeURIComponent(`${state.seed}-${tile.q}-${tile.r}`)}`;
+}
+
+// A link to run a tavern as an inn: OpenInn, seeded by the realm and the tile, so the same
+// tavern is always the same inn.
+export function innLink(state, tile) {
+  return `${INN_URL}?seed=${encodeURIComponent(`${state.seed}-${tile.q}-${tile.r}`)}`;
 }
 
 function growOnce(state, events) {

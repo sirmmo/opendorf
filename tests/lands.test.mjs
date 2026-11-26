@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  newGame, place, canPlace, legalSpots, fits, groups, key, isTileKind, charterText, charterProgress, dungeonLink, dist,
+  newGame, place, canPlace, legalSpots, fits, groups, key, isTileKind, charterText, charterProgress, dungeonLink, innLink, dist,
 } from '../js/rules.js';
 import { BASES, BAG, PALETTE, BUILDINGS, WORKSHOPS, COMBOS, CAMPS, workshopsFor, tileName } from '../js/tiles.js';
 import { toGeoJSON } from '../js/geojson.js';
@@ -388,6 +388,12 @@ test('the dungeon mouth links to OpenDelve, seeded by the realm and the tile', (
   assert.equal(dungeonLink(s, { q: 3, r: -2 }), 'https://ingmmo.com/opendelve/?seed=abc-3--2');
   const t = newGame('day 1/2');
   assert.equal(dungeonLink(t, { q: 0, r: 1 }), 'https://ingmmo.com/opendelve/?seed=day%201%2F2-0-1');
+});
+
+test('a tavern links to OpenInn, seeded by the realm and the tile', () => {
+  const s = newGame('abc');
+  assert.equal(innLink(s, { q: 3, r: -2 }), 'https://ingmmo.com/openinn/play/?seed=abc-3--2');
+  assert.equal(innLink(newGame('day 1/2'), { q: 0, r: 1 }), 'https://ingmmo.com/openinn/play/?seed=day%201%2F2-0-1');
 });
 
 // ---------- the map ----------
