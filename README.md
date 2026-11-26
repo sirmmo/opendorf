@@ -71,7 +71,7 @@ somewhere else, open the game with `?origin=lon,lat` (for example `?origin=11.34
 | Move the view | drag, or `WASD` / arrows | drag |
 | Rotate the view | right drag, `Q` / `E` | twist with two fingers |
 | Zoom | wheel, `+` / `-` | pinch |
-| Undo, discard, center | `Z`, `X`, `C` | ↶ and ⌖ buttons, *Discard* |
+| Undo, discard, center | `Z`, `X`, `C` | ↶ and crosshair buttons, *Discard* |
 | Choose a tile (sandbox) | click it in the palette, `T` / `Shift+T` for the next / previous | tap it in the strip above the tray (swipe for more) |
 
 ## Development

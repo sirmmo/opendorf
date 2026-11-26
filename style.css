@@ -77,6 +77,8 @@ kbd { background: #fff; border: 1px solid #c9b48a; border-bottom-width: 2px; bor
   font-size: 22px; font-weight: 700; box-shadow: var(--shadow); display: flex; align-items: center; justify-content: center; padding: 0;
 }
 .icon:hover { background: #fff8e6; }
+.icon .glyph { width: 1.05em; height: 1.05em; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
+.icon .glyph .dot { fill: currentColor; stroke: none; }
 .icon:active { transform: translateY(2px); }
 .icon:disabled { opacity: .45; cursor: default; }
 
