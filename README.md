@@ -72,7 +72,7 @@ somewhere else, open the game with `?origin=lon,lat` (for example `?origin=11.34
 | Rotate the view | right drag, `Q` / `E` | twist with two fingers |
 | Zoom | wheel, `+` / `-` | pinch |
 | Undo, discard, center | `Z`, `X`, `C` | ↶ and crosshair buttons, *Discard* |
-| Achievements | `L` (again, or `Esc`, to close) | trophy button |
+| Achievements | `L` (`Esc` to close) | trophy button |
 | Choose a tile (sandbox) | click it in the palette, `T` / `Shift+T` for the next / previous | tap it in the strip above the tray (swipe for more) |
 
 ## Achievements

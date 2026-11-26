@@ -310,19 +310,9 @@ function joinsRiverToSea(q, r) {
   });
 }
 
-const achievementsOpen = () => !!document.querySelector('.oa-shade');
-
-// The list, over the game; L or its button opens it, L or Esc closes it.
-function toggleAchievements() {
-  const oa = window.openachievements;
-  if (!oa) return;
-  if (achievementsOpen()) {
-    document.querySelector('.oa-shade .oa-close')?.click();
-    return;
-  }
-  // Before the library has loaded, showList does nothing: wait for it.
-  Promise.resolve(oa.ready).then(() => { if (!achievementsOpen()) oa.showList(); });
-}
+// The list, over the game: L or the trophy button opens it; Esc, its × or a click outside closes
+// it. While it is open the library keeps every key from the game.
+const toggleAchievements = () => window.openachievements?.toggleList();
 
 // ---------- sandbox palette ----------
 
@@ -619,7 +609,7 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
     return;
   }
-  const overlayOpen = !$('help').hidden || !$('menu').hidden || achievementsOpen();
+  const overlayOpen = !$('help').hidden || !$('menu').hidden || !!window.openachievements?.isListOpen();
   if (k === 'escape') {
     $('help').hidden = true;
     $('menu').hidden = true;

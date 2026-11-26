@@ -235,5 +235,5 @@ code { background: var(--paper-2); padding: 1px 6px; border-radius: 5px; }
   .pal-grid button { flex: 0 0 46px; width: 46px; height: 46px; }
   .toast { font-size: 14px; padding: 5px 12px; }
   /* Achievement toasts (vendor/openachievements) above the tray, not over it. */
-  body .oa-toasts { right: calc(8px + var(--safe-r)); bottom: calc(118px + var(--safe-b)); }
+  .oa-toasts { right: calc(8px + var(--safe-r)); bottom: calc(118px + var(--safe-b)); }
 }
