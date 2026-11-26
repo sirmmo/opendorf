@@ -471,7 +471,7 @@ export function dungeonLink(state, tile) {
 // A link to run a tavern as an inn: OpenInn, seeded by the realm and the tile, so the same
 // tavern is always the same inn.
 export function innLink(state, tile) {
-  return `${INN_URL}?seed=${encodeURIComponent(`${state.seed}-${tile.q}-${tile.r}`)}`;
+  return `${INN_URL}&seed=${encodeURIComponent(`${state.seed}-${tile.q}-${tile.r}`)}`;
 }
 
 function growOnce(state, events) {

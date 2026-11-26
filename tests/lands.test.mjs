@@ -392,8 +392,8 @@ test('the dungeon mouth links to OpenDelve, seeded by the realm and the tile', (
 
 test('a tavern links to OpenInn, seeded by the realm and the tile', () => {
   const s = newGame('abc');
-  assert.equal(innLink(s, { q: 3, r: -2 }), 'https://ingmmo.com/openinn/play/?seed=abc-3--2');
-  assert.equal(innLink(newGame('day 1/2'), { q: 0, r: 1 }), 'https://ingmmo.com/openinn/play/?seed=day%201%2F2-0-1');
+  assert.equal(innLink(s, { q: 3, r: -2 }), 'https://ingmmo.com/openinn/play/?game=village-inn&seed=abc-3--2');
+  assert.equal(innLink(newGame('day 1/2'), { q: 0, r: 1 }), 'https://ingmmo.com/openinn/play/?game=village-inn&seed=day%201%2F2-0-1');
 });
 
 // ---------- the map ----------

@@ -45,7 +45,7 @@ around them to work.
    on its flank. Click (or tap) it for the way down: it opens
    [OpenDelve](https://ingmmo.com/opendelve/) with a dungeon seeded by the realm and the tile
    (`?seed=<realm seed>-<q>-<r>`). In the same way, click (or tap) a village's **tavern** to run it
-   as an inn: it opens [OpenInn](https://ingmmo.com/openinn/play/) (The Gilded Mimic) with an inn
+   as an inn: it opens [OpenInn](https://ingmmo.com/openinn/play/?game=village-inn)'s village inn, The Wheatsheaf, with an inn
    seeded by the realm and the tile.
 7. **Ruins** of an older realm turn up now and then (about one tile in 29): broken arches,
    columns, walls and statues. A house next to ruins becomes a **dig site** (10): the first
