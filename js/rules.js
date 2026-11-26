@@ -6,7 +6,10 @@
 // the player choose every tile (`choose`), never runs out and never ends. Everything else
 // (fitting, renown, buildings, charters) is the same in both.
 
-import { BASES, BAG, BUILDINGS, FEATURES, WORKSHOPS, CIVIC, COMBOS, workshopsFor, compatible, cornersAgree } from './tiles.js';
+import {
+  BASES, BAG, BUILDINGS, FEATURES, WORKSHOPS, CIVIC, COMBOS, REACH, WITCH_MARSH, CAMPS, CLEARS_CAMPS, DUNGEON_MOUNTAIN,
+  DELVE_URL, workshopsFor, compatible, cornersAgree, needsWater,
+} from './tiles.js';
 
 export const DIRS = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]];
 export const START_SUPPLY = 40;
@@ -68,13 +71,23 @@ export function canPlace(state, piece, q, r, rot) {
   if (tileAt(state, q, r)) return false;
   const t = { base: piece.base, rot };
   let touching = 0;
+  let wet = false;
   for (const n of neighbours(q, r)) {
     const other = tileAt(state, n.q, n.r);
     if (!other) continue;
     touching++;
     if (!fits(t, other, n.k)) return false;
+    if (isWet(other)) wet = true;
   }
+  // Marsh only lies where it touches a river or the sea.
+  if (needsWater(piece.feature) && !wet) return false;
   return touching > 0;
+}
+
+// Does a tile carry a river or the sea (so a marsh may lie beside it)?
+export function isWet(tile) {
+  const e = BASES[tile.base].edges;
+  return e.includes('W') || e.includes('S');
 }
 
 export function legalRotations(state, piece, q, r) {
@@ -116,6 +129,8 @@ function inGroup(tile, kind) {
     case 'village':
     case 'mountain':
     case 'ruins':
+    case 'hills':
+    case 'marsh':
       return tile.feature === kind;
     case 'road':
       return BASES[tile.base].edges.includes('R');
@@ -196,7 +211,7 @@ export function newGame(seed = String(Date.now() % 1e9), { mode = 'normal' } = {
     nextCharter: 1,
     last: null,
     over: false,
-    stats: { placed: 0, discarded: 0, built: 0, charters: 0 },
+    stats: { placed: 0, discarded: 0, built: 0, charters: 0, cleared: 0 },
   };
   if (mode === 'sandbox') state.choice = { base: 'grass', feature: 'forest' };
   addTile(state, { base: 'grass', feature: 'village', v: 7 }, 0, 0, 0);
@@ -266,6 +281,7 @@ export function place(state, q, r, rot) {
 
   state.queue.shift();
   if (!isSandbox(state)) state.supply--;
+  wilds(state, t, events);
   develop(state, events);
   checkCharters(state, events);
   refill(state);
@@ -319,10 +335,43 @@ export function preview(state, q, r, rot) {
 
 // ---------- the realm grows ----------
 
-function dist(a, b) {
+export function dist(a, b) {
   const dq = a.q - b.q;
   const dr = a.r - b.r;
   return (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2;
+}
+
+// Is there a tile matching `test` within `d` tiles of any of `keys` (the tiles themselves too)?
+export function within(state, keys, d, test) {
+  for (const k of keys) {
+    const t = state.tiles[k];
+    for (let dq = -d; dq <= d; dq++) {
+      for (let dr = Math.max(-d, -dq - d); dr <= Math.min(d, -dq + d); dr++) {
+        const o = tileAt(state, t.q + dq, t.r + dr);
+        if (o && test(o)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+// The tile of a group with the most (or, with `outer`, the fewest) neighbours in the group,
+// then the oldest: the heart of a forest for a camp, the flank of a mountain for a cave mouth.
+function heartOf(state, keys, outer = false, ok = () => true) {
+  const inside = new Set(keys);
+  let best = null;
+  let bestN = 0;
+  for (const k of keys) {
+    const t = state.tiles[k];
+    if (!ok(t)) continue;
+    let n = neighbours(t.q, t.r).filter((c) => inside.has(key(c.q, c.r))).length;
+    if (outer) n = -n;
+    if (!best || n > bestN || (n === bestN && t.id < best.id)) {
+      best = t;
+      bestN = n;
+    }
+  }
+  return best;
 }
 
 function isHouse(t) {
@@ -376,9 +425,67 @@ function develop(state, events) {
   }
 }
 
+// ---------- the wild ----------
+
+// What the last tile laid stirs up in the wild: the realm's one dungeon mouth, once a mountain
+// range is big enough, and perhaps a camp in a stretch of land far from any village.
+function wilds(state, placed, events) {
+  if (!Object.values(state.tiles).some((t) => t.dungeon)) {
+    const range = groups(state, 'mountain').find((g) => g.length >= DUNGEON_MOUNTAIN);
+    if (range) {
+      // On the flank of the range, so the mouth looks out of the mountain.
+      const t = heartOf(state, range, true);
+      t.dungeon = true;
+      events.push({ type: 'dungeon', q: t.q, r: t.r });
+    }
+  }
+  for (const [camp, c] of Object.entries(CAMPS)) {
+    if (placed.feature !== c.land) continue;
+    const g = groups(state, c.land).find((x) => x.includes(key(placed.q, placed.r)));
+    if (g.length < c.size || g.some((k) => state.tiles[k].camp)) continue;
+    if (within(state, g, REACH, (o) => o.feature === 'village')) continue;
+    if (rand(state) >= c.chance) continue;
+    // Bandits hide in the heart of the forest; wolves den on the flank of the mountain, away
+    // from the dungeon mouth if they can.
+    const t = camp === 'bandits' ? heartOf(state, g) : heartOf(state, g, true, (x) => !x.dungeon) || heartOf(state, g, true);
+    t.camp = camp;
+    events.push({ type: 'camp', camp, q: t.q, r: t.r });
+  }
+}
+
+// Groups of `land` holding a camp, with the camp's tile.
+function campGroups(state, land) {
+  const out = [];
+  for (const g of groups(state, land)) {
+    const k = g.find((x) => state.tiles[x].camp);
+    if (k) out.push({ g, tile: state.tiles[k] });
+  }
+  return out;
+}
+
+// A link to the dungeon under the mountain: OpenDelve, seeded by the realm and the tile.
+export function dungeonLink(state, tile) {
+  return `${DELVE_URL}?seed=${encodeURIComponent(`${state.seed}-${tile.q}-${tile.r}`)}`;
+}
+
 function growOnce(state, events) {
+  // A watchtower or Barracks within reach of a camp's land clears the camp.
+  const camps = Object.values(state.tiles).some((t) => t.camp);
+  for (const [camp, c] of camps ? Object.entries(CAMPS) : []) {
+    for (const { g, tile } of campGroups(state, c.land)) {
+      if (tile.camp !== camp || !within(state, g, REACH, (o) => CLEARS_CAMPS.includes(o.building))) continue;
+      delete tile.camp;
+      state.score += c.pts;
+      state.supply += c.tiles;
+      state.stats.cleared = (state.stats.cleared || 0) + 1;
+      events.push({ type: 'clear', camp, q: tile.q, r: tile.r, pts: c.pts, tiles: c.tiles });
+      return true;
+    }
+  }
   for (const w of WORKSHOPS) {
     for (const g of groups(state, w.group)) {
+      // A camp keeps the land from feeding its workshop until it is cleared.
+      if (camps && Object.values(CAMPS).some((c) => c.blocks === w.building && g.some((k) => state.tiles[k].camp))) continue;
       const allowed = workshopsFor(w, g.length);
       if (allowed <= adjacentBuilt(state, g, w.building)) continue;
       const house = housesBy(state, g, false)[0];
@@ -400,11 +507,41 @@ function growOnce(state, events) {
       }
     }
     for (const c of COMBOS) {
-      if (!has(c.building) && c.needs.every((any) => any.some(has))) {
+      const near = (b) => within(state, g, REACH, (o) => o.building === b);
+      if (!has(c.building) && c.needs.every((any) => any.some(has)) && (c.near || []).every((any) => any.some(near))) {
         build(state, houses[0], c.building, events);
         return true;
       }
     }
+  }
+  // Buildings that stand on the land itself.
+  for (const g of groups(state, 'marsh')) {
+    if (g.length < WITCH_MARSH || g.some((k) => state.tiles[k].building === 'witchhut')) continue;
+    const spot = heartOf(state, g, false, (t) => !t.building);
+    if (spot) {
+      build(state, spot, 'witchhut', events);
+      return true;
+    }
+  }
+  for (const g of groups(state, 'village')) {
+    // One churchyard per church: the free meadow beside the village nearest the church.
+    const church = g.map((k) => state.tiles[k]).find((t) => t.building === 'church');
+    if (!church) continue;
+    const meadows = new Map();
+    let yard = false;
+    for (const k of g) {
+      const t = state.tiles[k];
+      for (const n of neighbours(t.q, t.r)) {
+        const o = tileAt(state, n.q, n.r);
+        if (o?.feature !== 'meadow') continue;
+        if (o.building === 'churchyard') yard = true;
+        else if (!o.building) meadows.set(key(o.q, o.r), o);
+      }
+    }
+    if (yard || !meadows.size) continue;
+    const spot = [...meadows.values()].sort((a, b) => dist(a, church) - dist(b, church) || a.id - b.id)[0];
+    build(state, spot, 'churchyard', events);
+    return true;
   }
   return false;
 }
@@ -424,7 +561,13 @@ function mostCentral(state, houses) {
 
 // ---------- royal charters ----------
 
-const CHARTER_KINDS = ['forest', 'field', 'village', 'road', 'river', 'sea', 'build', 'ruins'];
+const CHARTER_KINDS = ['forest', 'field', 'village', 'road', 'river', 'sea', 'build', 'ruins', 'camp'];
+
+// A charter kind that can be offered now: clearing a camp only while there is one to clear.
+function offered(state, kind) {
+  if (kind === 'camp') return Object.values(state.tiles).some((t) => t.camp);
+  return true;
+}
 
 export function countFeature(state, feature) {
   let n = 0;
@@ -436,6 +579,7 @@ export function charterProgress(state, c) {
   if (c.kind === 'build') return countBuilt(state, c.building);
   // Ruins are rare: they count wherever they lie, not only side by side.
   if (c.kind === 'ruins') return countFeature(state, 'ruins');
+  if (c.kind === 'camp') return state.stats.cleared || 0;
   return largest(state, c.kind);
 }
 
@@ -449,9 +593,10 @@ export function charterText(c) {
     case 'river': return `Follow a river across ${n} tiles`;
     case 'sea': return `Chart a sea of ${n} tiles`;
     case 'ruins': return `Uncover ruins across ${n} tiles`;
+    case 'camp': return 'Clear a bandit camp or a wolf den';
     case 'build': {
-      const name = BUILDINGS[c.building].name;
-      return n === 1 ? `Raise a ${name}` : `Raise ${n} ${name}s`;
+      const b = BUILDINGS[c.building];
+      return n === 1 ? `Raise a ${b.name}` : `Raise ${n} ${b.plural || b.name + 's'}`;
     }
   }
   return '';
@@ -460,10 +605,17 @@ export function charterText(c) {
 function makeCharter(state, kind) {
   const c = { id: state.nextCharter++, kind };
   if (kind === 'build') {
-    const options = ['lumbermill', 'windmill', 'watermill', 'mine', 'well', 'tavern', 'market'];
+    const options = ['lumbermill', 'windmill', 'watermill', 'mine', 'quarry', 'well', 'tavern', 'market'];
     c.building = options[Math.floor(rand(state) * options.length)];
     c.n = countBuilt(state, c.building) + 1;
     c.pts = 15;
+    c.tiles = 3;
+    return c;
+  }
+  if (kind === 'camp') {
+    // One more camp cleared, by a watchtower or Barracks within reach of it.
+    c.n = (state.stats.cleared || 0) + 1;
+    c.pts = 20;
     c.tiles = 3;
     return c;
   }
@@ -492,7 +644,7 @@ function checkCharters(state, events) {
     state.stats.charters++;
     events.push({ type: 'charter', text: charterText(c), pts: c.pts, tiles: c.tiles });
     const active = new Set(state.charters.map((x) => x.kind));
-    const options = CHARTER_KINDS.filter((k) => !active.has(k));
+    const options = CHARTER_KINDS.filter((k) => !active.has(k) && offered(state, k));
     state.charters[i] = makeCharter(state, options[Math.floor(rand(state) * options.length)]);
   }
 }

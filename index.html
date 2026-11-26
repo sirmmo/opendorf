@@ -67,8 +67,10 @@
     <p class="lead">Grow a medieval realm one hex tile at a time.</p>
     <ol>
       <li><b>Lay tiles</b> next to your realm. Roads and rivers must carry on, and a beach must run on into more beach or open water. Land may meet the sea as a low cliff, and rivers may flow into the sea.</li>
-      <li><b>Houses put their land to work.</b> A house next to a forest becomes a <i>lumbermill</i>, next to fields a <i>windmill</i>, by a river a <i>watermill</i>, under a mountain a <i>mine</i>, and by the sea a <i>watchtower</i>. Bigger forests, fields, rivers and seas feed more of them.</li>
-      <li><b>Villages grow.</b> Three houses together dig a <i>well</i>. Then come a <i>tavern</i> (5), a <i>market</i> (7), a <i>church</i> (10) and finally a <i>castle</i> (14). A village with a lumbermill and a mine gets a <i>blacksmith</i>.</li>
+      <li><b>Houses put their land to work.</b> A house next to a forest becomes a <i>lumbermill</i>, next to fields a <i>windmill</i>, by a river a <i>watermill</i>, under a mountain a <i>mine</i>, by the sea a <i>watchtower</i>, below hills a <i>quarry</i> and by a marsh an <i>herb garden</i>. Bigger lands feed more of them.</li>
+      <li><b>Villages grow.</b> Three houses together dig a <i>well</i>. Then come a <i>tavern</i> (5), a <i>market</i> (7), a <i>church</i> (10) and finally a <i>castle</i> (14). A village with a lumbermill and a mine gets a <i>blacksmith</i>; with a blacksmith and a watchtower within two tiles, <i>Barracks</i>; with Barracks and a market, an <i>archery range</i>. A meadow beside a church becomes its <i>churchyard</i>.</li>
+      <li><b>Hills, marsh and bridges.</b> Marsh only lies where it touches a river or the sea, and a marsh of six draws a <i>witch's hut</i>. A bridge takes a road square across a river.</li>
+      <li><b>The wild.</b> Bandits may camp in a big forest, and wolves den in a mountain, far from any village. They keep the woodcutters or miners away until a watchtower or Barracks stands within two tiles and sees them off. The first range of three mountains hides a <i>dungeon</i>: tap its mouth to explore it.</li>
       <li><b>Ruins of an older realm</b> turn up now and then. A house next to them becomes a <i>dig site</i> (one for the first ruin, then one more for every two). A village with a dig site and a tavern or market founds an <i>Archaeological Society</i>; once it also has a church, the Society opens an <i>Academy</i>.</li>
       <li><b>Every building and royal charter brings new tiles.</b> When the last tile is laid, your realm is complete.</li>
     </ol>
@@ -79,7 +81,7 @@
       <div><b>Sandbox</b> · menu → <i>Sandbox</i> to choose every tile yourself, with no end · <kbd>T</kbd> next tile</div>
     </div>
     <button class="btn" id="bHelpClose">Start building</button>
-    <p class="credits">Models: KayKit Medieval Hexagon Pack by Kay Lousberg, Ultimate Modular Ruins Pack by Quaternius (CC0). Code: GPL-3.0.</p>
+    <p class="credits">Models: KayKit Medieval Hexagon Pack by Kay Lousberg, Ultimate Modular Ruins Pack by Quaternius, Nature Kit and Graveyard Kit by Kenney (CC0). Code: GPL-3.0.</p>
   </div>
 </div>
 
@@ -98,6 +100,15 @@
     <button class="btn alt" id="bGeo">Download map (GeoJSON)</button>
     <p class="best normal-only">Best renown: <b id="best">0</b></p>
     <button class="btn ghost" id="bMenuClose">Back</button>
+  </div>
+</div>
+
+<div id="dungeon" class="overlay" hidden>
+  <div class="sheet small">
+    <h2>A dungeon under the mountain</h2>
+    <p>Worn steps lead down into the dark, past the torches someone keeps lit.</p>
+    <a class="btn" id="dungeonLink" href="https://ingmmo.com/opendelve/" target="_blank" rel="noopener">Explore in OpenDelve</a>
+    <button class="btn ghost" id="bDungeonClose">Stay in the realm</button>
   </div>
 </div>
 

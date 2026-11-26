@@ -44,6 +44,12 @@ export const BASES = {
   river_L: { model: 'hex_river_L', edges: 'WWWWWW' },
   ford_A: { model: 'hex_river_crossing_A', edges: 'WRLWRL' },
   ford_B: { model: 'hex_river_crossing_B', edges: 'WLRWLR' },
+  // The fords cover both crossings of a straight river by a straight road (edges 1-4 and 2-5,
+  // at 60 degrees). What they cannot do is cross it square: a road from edge 1 to edge 5 runs
+  // straight up the tile at x 0.5, across the river at a right angle. A bridge does that: the
+  // straight river with a KayKit bridge laid over it (the view adds the bridge). Turned by 3 it
+  // is the 2-4 crossing too, so one base covers both.
+  bridge: { model: 'hex_river_A', edges: 'WRLWLR' },
 
   coast_A: { model: 'hex_coast_A', edges: 'LSLLLL' },
   coast_B: { model: 'hex_coast_B', edges: 'LSSLLL' },
@@ -53,7 +59,12 @@ export const BASES = {
 
 // Features sit in the middle of plain grass tiles.
 // Ruins are the broken walls and columns of an older realm, waiting for someone to dig.
-export const FEATURES = ['forest', 'field', 'village', 'meadow', 'mountain', 'ruins'];
+// Hills are low green rises with stone under the turf; marsh is wet ground with pools and
+// reeds, and only lies where it touches a river or the sea (see `needsWater`).
+export const FEATURES = ['forest', 'field', 'village', 'meadow', 'mountain', 'ruins', 'hills', 'marsh'];
+
+// Features that must touch water: a neighbour carrying a river or the sea.
+export const needsWater = (feature) => feature === 'marsh';
 
 // What the realm's carts bring, with relative weights.
 export const BAG = [
@@ -63,6 +74,8 @@ export const BAG = [
   { base: 'grass', feature: 'meadow', w: 6 },
   { base: 'grass', feature: 'mountain', w: 4 },
   { base: 'grass', feature: 'ruins', w: 3.5 },
+  { base: 'grass', feature: 'hills', w: 4 },
+  { base: 'grass', feature: 'marsh', w: 2.5 },
 
   { base: 'road_A', w: 4 },
   { base: 'road_B', w: 3 },
@@ -88,6 +101,7 @@ export const BAG = [
   { base: 'river_G', w: 0.3 },
   { base: 'ford_A', w: 0.9 },
   { base: 'ford_B', w: 0.7 },
+  { base: 'bridge', w: 0.4 },
 
   { base: 'water', w: 2.6 },
   { base: 'coast_A', w: 1.6 },
@@ -105,8 +119,9 @@ function groupOf(base) {
   if (e.includes('S')) return 'sea';
   return 'land';
 }
-// Roads and rivers from the fewest ways to the most, fords last.
+// Roads and rivers from the fewest ways to the most, fords and the bridge last.
 function ways(base) {
+  if (base === 'bridge') return 10;
   return base.startsWith('ford') ? 9 : [...BASES[base].edges].filter((x) => x === 'R' || x === 'W').length;
 }
 export const PALETTE_GROUPS = ['land', 'road', 'river', 'sea'];
@@ -134,6 +149,7 @@ export function tileName(kind) {
   if (kind.base === 'grass') return 'Grass';
   if (kind.base === 'water') return 'Open sea';
   if (kind.base.startsWith('ford')) return 'Ford';
+  if (kind.base === 'bridge') return 'Bridge';
   if (count('W')) return `River, ${kind.base.endsWith('curvy') ? 'winding' : shape('W')}`;
   if (count('R')) return `Road, ${shape('R')}`;
   const n = count('S');
@@ -157,6 +173,17 @@ export const BUILDINGS = {
   digsite: { name: 'Dig site', pts: 10, tiles: 2 },
   society: { name: 'Archaeological Society', pts: 15, tiles: 3 },
   academy: { name: 'Academy', pts: 25, tiles: 4 },
+  // Workshops of the new lands, composed by the view: a quarry cut into the hills, and an herb
+  // garden of beds and drying racks by the marsh.
+  quarry: { name: 'Quarry', plural: 'Quarries', pts: 10, tiles: 2 },
+  herbgarden: { name: 'Herb garden', pts: 10, tiles: 2 },
+  // A garrison for a village that can arm itself and keep a lookout.
+  barracks: { name: 'Barracks', pts: 15, tiles: 3, model: 'building_barracks_blue' },
+  archery: { name: 'Archery range', pts: 20, tiles: 3, model: 'building_archeryrange_blue' },
+  // These two stand on the land itself, not on a house (`land`): the witch's hut in the middle
+  // of a big marsh, the churchyard on a meadow beside a church.
+  witchhut: { name: "Witch's hut", pts: 20, tiles: 2, land: 'marsh' },
+  churchyard: { name: 'Churchyard', pts: 5, tiles: 1, land: 'meadow', verb: 'laid out' },
 };
 
 // A workshop appears on a house next to a group of the right land, one per `per` tiles. With
@@ -168,6 +195,8 @@ export const WORKSHOPS = [
   { building: 'mine', group: 'mountain', per: 1 },
   { building: 'watchtower', group: 'sea', per: 4 },
   { building: 'digsite', group: 'ruins', first: 1, per: 2 },
+  { building: 'quarry', group: 'hills', per: 3 },
+  { building: 'herbgarden', group: 'marsh', per: 3 },
 ];
 
 // How many workshops a group of `size` tiles feeds.
@@ -178,12 +207,36 @@ export function workshopsFor(w, size) {
 
 // Buildings a village raises once it holds the right others (each on a free house, one each):
 // a blacksmith for a lumbermill and a mine; an Archaeological Society for a dig site and a
-// tavern or a market; an Academy for a Society and a church.
+// tavern or a market; an Academy for a Society and a church; Barracks for a blacksmith and a
+// watchtower within reach; an Archery range for Barracks and a market.
+// `needs` must stand in the village; `near` may also stand within REACH tiles of it (a
+// watchtower is often on the coast, across a road from the village it keeps watch for).
+export const REACH = 2;
 export const COMBOS = [
   { building: 'blacksmith', needs: [['lumbermill'], ['mine']] },
   { building: 'society', needs: [['digsite'], ['tavern', 'market']] },
   { building: 'academy', needs: [['society'], ['church']] },
+  { building: 'barracks', needs: [['blacksmith']], near: [['watchtower']] },
+  { building: 'archery', needs: [['barracks'], ['market']] },
 ];
+
+// The witch's hut: once per marsh group of this many tiles.
+export const WITCH_MARSH = 6;
+
+// Wild camps. One may turn up in a big stretch of wild land with no village within REACH
+// tiles: each tile laid that leaves such a group without a camp gives it a `chance`. A camp
+// stops the land feeding new workshops (`blocks`) until a watchtower or Barracks stands within
+// REACH tiles of its land, which clears it for renown and tiles. Nothing built is ever lost.
+export const CAMPS = {
+  bandits: { name: 'Bandit camp', land: 'forest', size: 5, blocks: 'lumbermill', pts: 15, tiles: 2, chance: 1 / 3 },
+  wolves: { name: 'Wolf den', land: 'mountain', size: 3, blocks: 'mine', pts: 15, tiles: 2, chance: 1 / 3 },
+};
+export const CLEARS_CAMPS = ['watchtower', 'barracks'];
+
+// The first mountain range of this many tiles opens a dungeon mouth, one per realm, leading to
+// OpenDelve.
+export const DUNGEON_MOUNTAIN = 3;
+export const DELVE_URL = 'https://ingmmo.com/opendelve/';
 
 // Village milestones: one of each per village, once it is big enough.
 export const CIVIC = [

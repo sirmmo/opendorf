@@ -1,12 +1,12 @@
 // The realm as GeoJSON: one polygon per tile, merged areas for each forest, field, village,
-// mountain range, ruins and sea, road and river networks as lines, buildings as points, and the
-// outline of the whole realm.
+// mountain range, ruins, hills, marsh and sea, road and river networks as lines, buildings as
+// points, camps and the dungeon mouth as sites, and the outline of the whole realm.
 //
 // Game (0, 0) is placed at `origin` ([lon, lat], default 0, 0) and one game unit is
 // `metersPerUnit` metres (default 50, so a tile is 100 m across).
 
-import { BASES, BUILDINGS } from './tiles.js';
-import { DIRS, edgeAt, groups, key } from './rules.js';
+import { BASES, BUILDINGS, CAMPS } from './tiles.js';
+import { DIRS, dungeonLink, edgeAt, groups, key } from './rules.js';
 import { projector, dissolve, polygonGeometry, feature } from './geo.js';
 
 const SQ3 = Math.sqrt(3);
@@ -41,7 +41,8 @@ export function toGeoJSON(state, { origin = [0, 0], metersPerUnit = 50 } = {}) {
   }));
 
   const areas = [
-    ['forest', 'forest'], ['field', 'farmland'], ['village', 'village'], ['mountain', 'mountain'], ['ruins', 'ruins'], ['sea', 'sea'],
+    ['forest', 'forest'], ['field', 'farmland'], ['village', 'village'], ['mountain', 'mountain'], ['ruins', 'ruins'],
+    ['hills', 'hills'], ['marsh', 'wetland'], ['sea', 'sea'],
   ];
   for (const [kind, name] of areas) {
     for (const g of groups(state, kind)) {
@@ -69,6 +70,17 @@ export function toGeoJSON(state, { origin = [0, 0], metersPerUnit = 50 } = {}) {
     } else if (t.feature === 'village') {
       features.push(feature({ type: 'Point', coordinates: project(center(t)) }, { layer: 'building', building: 'houses', name: 'Houses', q: t.q, r: t.r }));
     }
+    // Places that are not buildings: camps in the wild and the way down to the dungeon.
+    if (t.camp) {
+      features.push(feature({ type: 'Point', coordinates: project(center(t)) }, {
+        layer: 'site', site: t.camp === 'bandits' ? 'bandit_camp' : 'wolf_den', name: CAMPS[t.camp].name, q: t.q, r: t.r,
+      }));
+    }
+    if (t.dungeon) {
+      features.push(feature({ type: 'Point', coordinates: project(center(t)) }, {
+        layer: 'site', site: 'dungeon', name: 'Dungeon mouth', url: dungeonLink(state, t), q: t.q, r: t.r,
+      }));
+    }
   }
 
   for (const t of tiles) {
@@ -76,7 +88,8 @@ export function toGeoJSON(state, { origin = [0, 0], metersPerUnit = 50 } = {}) {
     const neighbours = DIRS.filter(([dq, dr]) => state.tiles[key(t.q + dq, t.r + dr)]).length;
     features.push(feature(polygonGeometry([[hexRing(t)]], project), {
       layer: 'tile', q: t.q, r: t.r, base: t.base, model: BASES[t.base].model, rotation: t.rot * 60,
-      edges, feature: t.feature || null, building: t.building || null, neighbours, order: t.id,
+      edges, feature: t.feature || null, building: t.building || null, camp: t.camp || null, dungeon: !!t.dungeon,
+      neighbours, order: t.id,
     }));
   }
 

@@ -1,6 +1,6 @@
 import { View } from './view.js';
 import * as R from './rules.js';
-import { BUILDINGS, PALETTE, PALETTE_GROUPS, tileName } from './tiles.js';
+import { BUILDINGS, CAMPS, PALETTE, PALETTE_GROUPS, tileName } from './tiles.js';
 import { toGeoJSON } from './geojson.js';
 
 const $ = (id) => document.getElementById(id);
@@ -165,7 +165,8 @@ function refreshGhost() {
       const p = previewAt(c.q, c.r, shownRot);
       const lines = [];
       for (const e of p.events) {
-        if (e.type === 'build') lines.push(`<span class="b">raises ${aOrAn(BUILDINGS[e.building].name)}</span>`);
+        if (e.type === 'build') lines.push(`<span class="b">${BUILDINGS[e.building].verb === 'laid out' ? 'lays out' : 'raises'} ${aOrAn(BUILDINGS[e.building].name)}</span>`);
+        if (e.type === 'clear') lines.push(`<span class="b">clears the ${CAMPS[e.camp].name.toLowerCase()}</span>`);
         if (e.type === 'charter') lines.push(`<span class="b">fulfils a charter</span>`);
       }
       tip.innerHTML = `<span class="pts">+${p.pts}</span>${lines.join('')}`;
@@ -259,14 +260,25 @@ function react(events) {
   for (const e of events) {
     if (e.type === 'place') floater(e.q, e.r, `+${e.pts}`, '', 0);
     if (e.type === 'build') {
+      const b = BUILDINGS[e.building];
       delay += 0.5;
-      floater(e.q, e.r, BUILDINGS[e.building].name, 'build', delay);
-      toast(`<b>${BUILDINGS[e.building].name}</b> raised · +${e.pts} renown${more(e.tiles)}`);
+      floater(e.q, e.r, b.name, 'build', delay);
+      toast(`<b>${b.name}</b> ${b.verb || 'raised'} · +${e.pts} renown${more(e.tiles)}`);
     }
+    // The wild: a camp turns up, a camp is cleared, a dungeon mouth opens.
+    if (e.type === 'camp') toast(e.camp === 'bandits'
+      ? 'Bandits have made camp in the forest. A watchtower or Barracks nearby will see them off.'
+      : 'Wolves den in the mountain. A watchtower or Barracks nearby will see them off.');
+    if (e.type === 'clear') {
+      delay += 0.5;
+      floater(e.q, e.r, 'Cleared', 'build', delay);
+      toast(`<b>${CAMPS[e.camp].name}</b> cleared · +${e.pts} renown${more(e.tiles)}`);
+    }
+    if (e.type === 'dungeon') toast('A dark way opens under the mountain. <b>Tap it</b> to look inside.');
     if (e.type === 'charter') toast(`Charter fulfilled: ${e.text} · <b>+${e.pts}</b>${more(e.tiles)}`);
   }
   bump('score');
-  if (events.some((e) => e.type === 'build' || e.type === 'charter')) bump('supply');
+  if (events.some((e) => e.type === 'build' || e.type === 'charter' || e.type === 'clear')) bump('supply');
 }
 
 // ---------- achievements ----------
@@ -581,8 +593,19 @@ canvas.addEventListener('pointerleave', () => {
   }
 });
 
+// The dungeon mouth: a small card with the way down, into OpenDelve.
+function showDungeon(t) {
+  $('dungeonLink').href = R.dungeonLink(state, t);
+  $('dungeon').hidden = false;
+}
+
 function tap(c) {
   if (!c) return;
+  const t = R.tileAt(state, c.q, c.r);
+  if (t?.dungeon) {
+    showDungeon(t);
+    return;
+  }
   if (!touchMode) {
     placeAt(c);
     return;
@@ -604,15 +627,16 @@ canvas.addEventListener('wheel', (e) => {
 window.addEventListener('keydown', (e) => {
   if (e.target.closest?.('input,textarea')) return;
   const k = e.key.toLowerCase();
-  if (k === 'l' && $('help').hidden && $('menu').hidden) {
+  if (k === 'l' && $('help').hidden && $('menu').hidden && $('dungeon').hidden) {
     toggleAchievements();
     e.preventDefault();
     return;
   }
-  const overlayOpen = !$('help').hidden || !$('menu').hidden || !!window.openachievements?.isListOpen();
+  const overlayOpen = !$('help').hidden || !$('menu').hidden || !$('dungeon').hidden || !!window.openachievements?.isListOpen();
   if (k === 'escape') {
     $('help').hidden = true;
     $('menu').hidden = true;
+    $('dungeon').hidden = true;
     selected = null;
     refreshGhost();
     return;
@@ -693,7 +717,9 @@ $('bOverGeo').onclick = downloadGeo;
 $('bOverNew').onclick = () => startGame(randomSeed());
 $('bOverRestart').onclick = () => startGame(state.seed);
 $('bOverLook').onclick = () => { $('over').hidden = true; view.frame(state); };
-for (const id of ['help', 'menu']) {
+$('bDungeonClose').onclick = () => { $('dungeon').hidden = true; };
+$('dungeonLink').onclick = () => { $('dungeon').hidden = true; };
+for (const id of ['help', 'menu', 'dungeon']) {
   $(id).addEventListener('click', (e) => {
     if (e.target.id === id) $(id).hidden = true;
   });
@@ -721,7 +747,7 @@ async function boot() {
   view.applyShift();
   if (!store.get('opendorf.seenHelp')) $('help').hidden = false;
   view.start();
-  window.__opendorf = { get state() { return state; }, view, R, placeAt, rotate, chooseTile, enterSandbox, leaveSandbox };
+  window.__opendorf = { get state() { return state; }, view, R, placeAt, rotate, chooseTile, enterSandbox, leaveSandbox, tap };
 }
 
 boot().catch((err) => {
