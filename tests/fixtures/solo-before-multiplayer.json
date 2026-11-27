@@ -1,0 +1,288 @@
+{
+ "games": [
+  {
+   "seed": "alpha",
+   "player": "first",
+   "dealt": "1951bb15",
+   "moves": 54,
+   "score": 227,
+   "turn": 54,
+   "supply": 0,
+   "stats": {
+    "placed": 54,
+    "discarded": 0,
+    "built": 7,
+    "charters": 0,
+    "cleared": 0
+   },
+   "final": "fb2a5bd2"
+  },
+  {
+   "seed": "beta",
+   "player": "first",
+   "dealt": "85c2bb29",
+   "moves": 52,
+   "score": 231,
+   "turn": 52,
+   "supply": 0,
+   "stats": {
+    "placed": 52,
+    "discarded": 0,
+    "built": 5,
+    "charters": 1,
+    "cleared": 0
+   },
+   "final": "a409dec3"
+  },
+  {
+   "seed": "day-2026-11-27",
+   "player": "first",
+   "dealt": "5d3383df",
+   "moves": 62,
+   "score": 319,
+   "turn": 62,
+   "supply": 0,
+   "stats": {
+    "placed": 62,
+    "discarded": 0,
+    "built": 7,
+    "charters": 3,
+    "cleared": 0
+   },
+   "final": "68928688"
+  },
+  {
+   "seed": "k3x9qz",
+   "player": "greedy",
+   "dealt": "7a8c7464",
+   "moves": 60,
+   "score": 351,
+   "turn": 60,
+   "supply": 0,
+   "stats": {
+    "placed": 60,
+    "discarded": 0,
+    "built": 7,
+    "charters": 2,
+    "cleared": 0
+   },
+   "final": "976e0868"
+  },
+  {
+   "seed": "camps",
+   "player": "greedy",
+   "dealt": "4d3a8624",
+   "moves": 79,
+   "score": 550,
+   "turn": 79,
+   "supply": 0,
+   "stats": {
+    "placed": 79,
+    "discarded": 0,
+    "built": 12,
+    "charters": 4,
+    "cleared": 0
+   },
+   "final": "5293073b"
+  }
+ ],
+ "save": {
+  "state": {
+   "version": 1,
+   "mode": "normal",
+   "seed": "old-save",
+   "rng": 1497216647,
+   "tiles": {
+    "0,0": {
+     "id": 1,
+     "q": 0,
+     "r": 0,
+     "rot": 0,
+     "base": "grass",
+     "v": 7,
+     "feature": "village",
+     "building": "lumbermill"
+    },
+    "1,0": {
+     "id": 2,
+     "q": 1,
+     "r": 0,
+     "rot": 0,
+     "base": "grass",
+     "v": 607378,
+     "feature": "field"
+    },
+    "0,1": {
+     "id": 3,
+     "q": 0,
+     "r": 1,
+     "rot": 3,
+     "base": "river_C",
+     "v": 6928
+    },
+    "-1,1": {
+     "id": 4,
+     "q": -1,
+     "r": 1,
+     "rot": 1,
+     "base": "road_A",
+     "v": 933646
+    },
+    "0,-1": {
+     "id": 5,
+     "q": 0,
+     "r": -1,
+     "rot": 0,
+     "base": "grass",
+     "v": 620022,
+     "feature": "hills"
+    },
+    "2,0": {
+     "id": 6,
+     "q": 2,
+     "r": 0,
+     "rot": 2,
+     "base": "coast_D",
+     "v": 242475
+    },
+    "1,-1": {
+     "id": 7,
+     "q": 1,
+     "r": -1,
+     "rot": 0,
+     "base": "grass",
+     "v": 130070,
+     "feature": "forest"
+    },
+    "-2,2": {
+     "id": 8,
+     "q": -2,
+     "r": 2,
+     "rot": 0,
+     "base": "grass",
+     "v": 398671,
+     "feature": "meadow"
+    },
+    "-2,1": {
+     "id": 9,
+     "q": -2,
+     "r": 1,
+     "rot": 0,
+     "base": "grass",
+     "v": 152547,
+     "feature": "forest"
+    },
+    "-1,-1": {
+     "id": 10,
+     "q": -1,
+     "r": -1,
+     "rot": 0,
+     "base": "grass",
+     "v": 815472,
+     "feature": "forest"
+    },
+    "0,-2": {
+     "id": 11,
+     "q": 0,
+     "r": -2,
+     "rot": 0,
+     "base": "grass",
+     "v": 505070,
+     "feature": "forest"
+    },
+    "1,-2": {
+     "id": 12,
+     "q": 1,
+     "r": -2,
+     "rot": 0,
+     "base": "grass",
+     "v": 189578,
+     "feature": "forest"
+    },
+    "1,1": {
+     "id": 13,
+     "q": 1,
+     "r": 1,
+     "rot": 0,
+     "base": "river_F",
+     "v": 84580
+    },
+    "-2,3": {
+     "id": 14,
+     "q": -2,
+     "r": 3,
+     "rot": 4,
+     "base": "road_K",
+     "v": 670006
+    },
+    "0,2": {
+     "id": 15,
+     "q": 0,
+     "r": 2,
+     "rot": 0,
+     "base": "river_G",
+     "v": 14581
+    }
+   },
+   "nextId": 16,
+   "queue": [
+    {
+     "base": "grass",
+     "v": 160706,
+     "feature": "forest"
+    },
+    {
+     "base": "road_B",
+     "v": 679436
+    },
+    {
+     "base": "grass",
+     "v": 579154,
+     "feature": "village"
+    }
+   ],
+   "supply": 27,
+   "score": 45,
+   "turn": 15,
+   "charters": [
+    {
+     "id": 1,
+     "kind": "forest",
+     "n": 6,
+     "pts": 22,
+     "tiles": 4
+    },
+    {
+     "id": 2,
+     "kind": "road",
+     "n": 6,
+     "pts": 22,
+     "tiles": 4
+    },
+    {
+     "id": 3,
+     "kind": "field",
+     "n": 4,
+     "pts": 18,
+     "tiles": 3
+    }
+   ],
+   "nextCharter": 4,
+   "last": {
+    "q": 0,
+    "r": 2
+   },
+   "over": false,
+   "stats": {
+    "placed": 14,
+    "discarded": 1,
+    "built": 1,
+    "charters": 0,
+    "cleared": 0
+   }
+  },
+  "player": "first",
+  "final": "121867ca",
+  "score": 236
+ }
+}

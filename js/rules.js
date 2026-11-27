@@ -5,6 +5,11 @@
 // Two modes: 'normal' deals tiles from a seeded bag until the supply runs out; 'sandbox' lets
 // the player choose every tile (`choose`), never runs out and never ends. Everything else
 // (fitting, renown, buildings, charters) is the same in both.
+//
+// A normal realm may be played by 2 to 4 people taking turns (`players`), in one of two ways
+// (`play`): 'shared', where they build one realm together, or 'rival', where each tile carries
+// its layer's banner (`tile.by`) and renown goes to whoever earned it. See "Playing together"
+// below. A solo realm has none of these fields, so it plays and saves exactly as it always has.
 
 import {
   BASES, BAG, BUILDINGS, FEATURES, WORKSHOPS, CIVIC, COMBOS, REACH, WITCH_MARSH, CAMPS, CLEARS_CAMPS, DUNGEON_MOUNTAIN,
@@ -194,8 +199,9 @@ export function isSandbox(state) {
   return state.mode === 'sandbox';
 }
 
-export function newGame(seed = String(Date.now() % 1e9), { mode = 'normal' } = {}) {
+export function newGame(seed = String(Date.now() % 1e9), { mode = 'normal', players = null, play = 'shared' } = {}) {
   if (!MODES.includes(mode)) throw new Error('unknown mode ' + mode);
+  if (players) checkPlayers(players, play, mode);
   const state = {
     version: 1,
     mode,
@@ -215,14 +221,21 @@ export function newGame(seed = String(Date.now() % 1e9), { mode = 'normal' } = {
   };
   if (mode === 'sandbox') state.choice = { base: 'grass', feature: 'forest' };
   addTile(state, { base: 'grass', feature: 'village', v: 7 }, 0, 0, 0);
-  refill(state);
+  if (players) {
+    seatPlayers(state, players, play);
+  } else {
+    refill(state);
+  }
   for (const kind of ['forest', 'road', 'field']) state.charters.push(makeCharter(state, kind));
+  if (players && play === 'shared') state.players.forEach((p, i) => { p.charter = makePrivate(state, i); });
   return state;
 }
 
-function addTile(state, piece, q, r, rot) {
+// `by`: the player who laid it (only when several play; the hearth belongs to no one).
+function addTile(state, piece, q, r, rot, by) {
   const t = { id: state.nextId++, q, r, rot, base: piece.base, v: piece.v };
   if (piece.feature) t.feature = piece.feature;
+  if (by !== undefined && by !== null) t.by = by;
   state.tiles[key(q, r)] = t;
   return t;
 }
@@ -244,14 +257,23 @@ function draw(state) {
   return piece;
 }
 
+// Tops up the current hand. The supply counts every tile not yet laid, the ones in hand too, so
+// all the hands together never hold more than the supply.
 function refill(state) {
   if (isSandbox(state)) {
     // The sandbox never runs out: the hand is the one tile the player chose, dealt again and again.
     if (!state.queue.length) state.queue.push(makePiece(state, state.choice));
     return;
   }
-  while (state.queue.length < Math.min(HAND, state.supply)) state.queue.push(draw(state));
+  while (state.queue.length < HAND && held(state) < state.supply) state.queue.push(draw(state));
   if (state.supply <= 0) state.over = true;
+}
+
+// Tiles in hand: the current one's (`queue`), and the others' when several play.
+function held(state) {
+  let n = state.queue.length;
+  if (state.players) state.players.forEach((p, i) => { if (i !== state.current) n += p.hand.length; });
+  return n;
 }
 
 // ---------- placing ----------
@@ -259,9 +281,10 @@ function refill(state) {
 // Places the current tile. Returns the list of events, or null if the move is not legal.
 export function place(state, q, r, rot) {
   const piece = state.queue[0];
-  if (state.over || !piece || !canPlace(state, piece, q, r, rot)) return null;
+  if (state.over || !piece || state.moved || !canPlace(state, piece, q, r, rot)) return null;
   const events = [];
-  const t = addTile(state, piece, q, r, rot);
+  const mover = isMulti(state) ? state.current : undefined;
+  const t = addTile(state, piece, q, r, rot, mover);
   state.last = { q, r };
   state.turn++;
   state.stats.placed++;
@@ -276,25 +299,28 @@ export function place(state, q, r, rot) {
     if (e === 'R' || e === 'W') pts += 2;
     else if (e === 'S' && edgeAt(o, (n.k + 3) % 6) === 'S') pts += 1;
   }
-  state.score += pts;
-  events.push({ type: 'place', q, r, pts });
+  gain(state, pts, mover === undefined ? null : [mover]);
+  events.push(mover === undefined ? { type: 'place', q, r, pts } : { type: 'place', q, r, pts, by: mover });
 
   state.queue.shift();
   if (!isSandbox(state)) state.supply--;
+  if (mover !== undefined) state.moved = true;
   wilds(state, t, events);
   develop(state, events);
   checkCharters(state, events);
+  if (state.play === 'shared') checkPrivate(state, events);
   refill(state);
   if (state.over) events.push({ type: 'over', score: state.score });
   return events;
 }
 
 export function discard(state) {
-  if (state.over || !state.queue.length || isSandbox(state)) return null;
+  if (state.over || !state.queue.length || isSandbox(state) || state.moved) return null;
   state.queue.shift();
   state.supply--;
   state.turn++;
   state.stats.discarded++;
+  if (isMulti(state)) state.moved = true;
   refill(state);
   const events = [{ type: 'discard' }];
   if (state.over) events.push({ type: 'over', score: state.score });
@@ -325,12 +351,15 @@ export function choose(state, kind) {
 }
 
 // What placing here would bring, without changing the game.
+// In a rival game `mine` is what the player laying it would earn (`pts` is the whole realm's).
 export function preview(state, q, r, rot) {
   const copy = structuredClone(state);
   const before = copy.score;
   const events = place(copy, q, r, rot);
   if (!events) return null;
-  return { pts: copy.score - before, events };
+  const out = { pts: copy.score - before, events };
+  if (isRival(state)) out.mine = copy.players[state.current].score - state.players[state.current].score;
+  return out;
 }
 
 // ---------- the realm grows ----------
@@ -343,16 +372,21 @@ export function dist(a, b) {
 
 // Is there a tile matching `test` within `d` tiles of any of `keys` (the tiles themselves too)?
 export function within(state, keys, d, test) {
+  return !!findWithin(state, keys, d, test);
+}
+
+// The first such tile (always the same one for the same realm), or null.
+export function findWithin(state, keys, d, test) {
   for (const k of keys) {
     const t = state.tiles[k];
     for (let dq = -d; dq <= d; dq++) {
       for (let dr = Math.max(-d, -dq - d); dr <= Math.min(d, -dq + d); dr++) {
         const o = tileAt(state, t.q + dq, t.r + dr);
-        if (o && test(o)) return true;
+        if (o && test(o)) return o;
       }
     }
   }
-  return false;
+  return null;
 }
 
 // The tile of a group with the most (or, with `outer`, the fewest) neighbours in the group,
@@ -409,13 +443,18 @@ function adjacentBuilt(state, keys, building) {
   return found.size;
 }
 
-function build(state, tile, building, events) {
+// `group`: the tiles whose growth raised it (the land that feeds a workshop, the village a town
+// building serves), for a rival game's renown.
+function build(state, tile, building, events, group) {
   const b = BUILDINGS[building];
   tile.building = building;
-  state.score += b.pts;
+  const to = isRival(state) ? earners(state, tile, group) : null;
+  gain(state, b.pts, to);
   state.supply += b.tiles;
   state.stats.built++;
-  events.push({ type: 'build', building, q: tile.q, r: tile.r, pts: b.pts, tiles: b.tiles });
+  const e = { type: 'build', building, q: tile.q, r: tile.r, pts: b.pts, tiles: b.tiles };
+  if (to) e.to = to;
+  events.push(e);
 }
 
 // One building per pass, until nothing more can grow.
@@ -479,12 +518,17 @@ function growOnce(state, events) {
   const camps = Object.values(state.tiles).some((t) => t.camp);
   for (const [camp, c] of camps ? Object.entries(CAMPS) : []) {
     for (const { g, tile } of campGroups(state, c.land)) {
-      if (tile.camp !== camp || !within(state, g, REACH, (o) => CLEARS_CAMPS.includes(o.building))) continue;
+      const by = tile.camp === camp && findWithin(state, g, REACH, (o) => CLEARS_CAMPS.includes(o.building));
+      if (!by) continue;
       delete tile.camp;
-      state.score += c.pts;
+      // In a rival game the renown goes to whoever holds the watchtower or Barracks.
+      const to = isRival(state) ? earners(state, by, null) : null;
+      gain(state, c.pts, to);
       state.supply += c.tiles;
       state.stats.cleared = (state.stats.cleared || 0) + 1;
-      events.push({ type: 'clear', camp, q: tile.q, r: tile.r, pts: c.pts, tiles: c.tiles });
+      const e = { type: 'clear', camp, q: tile.q, r: tile.r, pts: c.pts, tiles: c.tiles };
+      if (to) e.to = to;
+      events.push(e);
       return true;
     }
   }
@@ -494,28 +538,28 @@ function growOnce(state, events) {
       if (camps && Object.values(CAMPS).some((c) => c.blocks === w.building && g.some((k) => state.tiles[k].camp))) continue;
       const allowed = workshopsFor(w, g.length);
       if (allowed <= adjacentBuilt(state, g, w.building)) continue;
-      const house = housesBy(state, g, false)[0];
+      const house = favour(state, housesBy(state, g, false), g)[0];
       if (house) {
-        build(state, house, w.building, events);
+        build(state, house, w.building, events, g);
         return true;
       }
     }
   }
   for (const g of groups(state, 'village')) {
     const has = (b) => g.some((k) => state.tiles[k].building === b);
-    const houses = housesBy(state, g, true);
+    const houses = favour(state, housesBy(state, g, true), g);
     if (!houses.length) continue;
     for (const c of CIVIC) {
       if (g.length >= c.size && !has(c.building)) {
-        const spot = c.building === 'castle' ? mostCentral(state, houses) : houses[0];
-        build(state, spot, c.building, events);
+        const spot = c.building === 'castle' ? mostCentral(state, holdersOnly(state, houses, g)) : houses[0];
+        build(state, spot, c.building, events, g);
         return true;
       }
     }
     for (const c of COMBOS) {
       const near = (b) => within(state, g, REACH, (o) => o.building === b);
       if (!has(c.building) && c.needs.every((any) => any.some(has)) && (c.near || []).every((any) => any.some(near))) {
-        build(state, houses[0], c.building, events);
+        build(state, houses[0], c.building, events, g);
         return true;
       }
     }
@@ -525,7 +569,7 @@ function growOnce(state, events) {
     if (g.length < WITCH_MARSH || g.some((k) => state.tiles[k].building === 'witchhut')) continue;
     const spot = heartOf(state, g, false, (t) => !t.building);
     if (spot) {
-      build(state, spot, 'witchhut', events);
+      build(state, spot, 'witchhut', events, g);
       return true;
     }
   }
@@ -546,7 +590,7 @@ function growOnce(state, events) {
     }
     if (yard || !meadows.size) continue;
     const spot = [...meadows.values()].sort((a, b) => dist(a, church) - dist(b, church) || a.id - b.id)[0];
-    build(state, spot, 'churchyard', events);
+    build(state, spot, 'churchyard', events, g);
     return true;
   }
   return false;
@@ -645,12 +689,279 @@ function checkCharters(state, events) {
   for (let i = 0; i < state.charters.length; i++) {
     const c = state.charters[i];
     if (charterProgress(state, c) < c.n) continue;
-    state.score += c.pts;
+    // In a rival game a charter rewards the player whose move fulfilled it.
+    const to = isRival(state) ? [state.current] : null;
+    gain(state, c.pts, to);
     state.supply += c.tiles;
     state.stats.charters++;
-    events.push({ type: 'charter', text: charterText(c), pts: c.pts, tiles: c.tiles });
+    const e = { type: 'charter', text: charterText(c), pts: c.pts, tiles: c.tiles };
+    if (to) e.to = to;
+    events.push(e);
     const active = new Set(state.charters.map((x) => x.kind));
     const options = CHARTER_KINDS.filter((k) => !active.has(k) && offered(state, k));
     state.charters[i] = makeCharter(state, options[Math.floor(rand(state) * options.length)]);
   }
+}
+
+// ---------- playing together ----------
+//
+// Two to four people take turns on one realm. Each has a hand of three tiles, drawn from the
+// realm's one supply: `queue` is always the hand of the player whose turn it is (`current`), so
+// everything that works on the current tile works as it does alone, and `players[i].hand` keeps
+// the others'. A turn is one move (lay or discard: `moved`), then `endTurn` passes it on.
+//
+// 'shared': renown, the supply and royal charters belong to everyone; each player also has a
+// private charter (`players[i].charter`) judged on the tiles they laid, rewarding everyone.
+// 'rival': every tile carries its layer's banner (`tile.by`), and each player has their own
+// renown (`players[i].score`; `score` stays the realm's total):
+// - a tile's own renown goes to whoever laid it;
+// - a building earns for the owner of the tile it stands on. A group (a land, or a village) is
+//   held by whoever laid most of its tiles (a tie: all of them), and its next building goes up
+//   on one of its holders' free houses if they have one, so a building follows the majority;
+//   one that stands on the hearth, which no one laid, earns for the holders, shared equally;
+// - clearing a camp earns for the owner of the watchtower or Barracks that cleared it;
+// - a royal charter rewards the player whose move fulfilled it.
+// Everything comes from the seeded generator and the order of the moves, so the same seed and
+// moves make the same game in every browser (`command` applies an online move list).
+
+export const PLAYS = ['shared', 'rival'];
+export const MIN_PLAYERS = 2;
+export const MAX_PLAYERS = 4;
+
+export function isMulti(state) {
+  return !!state.players;
+}
+
+export function isRival(state) {
+  return state.play === 'rival';
+}
+
+function checkPlayers(players, play, mode) {
+  if (mode !== 'normal') throw new Error('only a normal realm can be played together');
+  if (!PLAYS.includes(play)) throw new Error('unknown way to play ' + play);
+  if (!Array.isArray(players) || players.length < MIN_PLAYERS || players.length > MAX_PLAYERS) {
+    throw new Error(`${MIN_PLAYERS} to ${MAX_PLAYERS} players`);
+  }
+}
+
+// Seats the players and deals each a hand, in turn order.
+function seatPlayers(state, players, play) {
+  state.play = play;
+  state.players = players.map((p) => {
+    const out = { name: String(p.name || '').slice(0, 24), color: String(p.color || ''), hand: [] };
+    if (p.seat !== undefined) out.seat = p.seat; // the online seat ("faction") this player sits in
+    if (play === 'rival') out.score = 0;
+    return out;
+  });
+  state.moved = false;
+  for (let i = 0; i < players.length; i++) {
+    state.current = i;
+    state.queue = [];
+    refill(state);
+    state.players[i].hand = state.queue;
+  }
+  state.current = 0;
+  state.queue = state.players[0].hand;
+  state.players[0].hand = [];
+}
+
+// Adds renown, to the realm and, in a rival game, to the players in `to` (shared out equally;
+// what does not divide goes one each to the first of them).
+function gain(state, pts, to) {
+  state.score += pts;
+  if (!to || !to.length || !isRival(state)) return;
+  const each = Math.floor(pts / to.length);
+  let rest = pts - each * to.length;
+  for (const i of to) {
+    state.players[i].score += each + (rest > 0 ? 1 : 0);
+    rest--;
+  }
+}
+
+// Players in turn order, starting with the one whose turn it is.
+function fromCurrent(state, list) {
+  const n = state.players.length;
+  return [...list].sort((a, b) => ((a - state.current + n) % n) - ((b - state.current + n) % n));
+}
+
+// Who holds a group: whoever laid most of its tiles (all of them when tied), in turn order from
+// the current player; none if no one laid any of it.
+export function holders(state, keys) {
+  const count = new Map();
+  for (const k of keys) {
+    const by = state.tiles[k].by;
+    if (by !== undefined) count.set(by, (count.get(by) || 0) + 1);
+  }
+  const most = Math.max(0, ...count.values());
+  if (!most) return [];
+  return fromCurrent(state, [...count].filter(([, n]) => n === most).map(([i]) => i));
+}
+
+// Who a building (or the watchtower that cleared a camp) earns for: the owner of its tile; on
+// the hearth, the holders of the group that raised it; failing that, the current player.
+function earners(state, tile, group) {
+  if (tile.by !== undefined) return [tile.by];
+  const h = group ? holders(state, group) : [];
+  return h.length ? h : [state.current];
+}
+
+// In a rival game, a group's free houses with its holders' first (nearest first among each).
+function favour(state, houses, group) {
+  if (!isRival(state) || houses.length < 2) return houses;
+  const h = new Set(holders(state, group));
+  return [...houses.filter((t) => h.has(t.by)), ...houses.filter((t) => !h.has(t.by))];
+}
+
+// The holders' houses, if they have any free (where a rival village's castle goes).
+function holdersOnly(state, houses, group) {
+  if (!isRival(state)) return houses;
+  const h = new Set(holders(state, group));
+  const own = houses.filter((t) => h.has(t.by));
+  return own.length ? own : houses;
+}
+
+// The player to move passes the turn on. A player who made no move (online, when the pace's
+// clock ran out) throws their tile away first. Players with nothing in hand are passed over.
+// Returns the events, or null if there is no turn to end.
+export function endTurn(state) {
+  if (!isMulti(state) || state.over) return null;
+  const events = [];
+  if (!state.moved) {
+    const who = state.current;
+    const ev = discard(state);
+    if (ev) events.push(...ev.map((e) => (e.type === 'discard' ? { ...e, by: who, timeout: true } : e)));
+    if (state.over) return events;
+  }
+  state.moved = false;
+  const n = state.players.length;
+  const from = state.current;
+  state.players[from].hand = state.queue;
+  for (let k = 1; k <= n; k++) {
+    const i = (from + k) % n;
+    state.current = i;
+    state.queue = state.players[i].hand;
+    state.players[i].hand = [];
+    refill(state); // the supply may have grown since this hand was dealt
+    if (state.queue.length) break;
+    state.players[i].hand = state.queue;
+  }
+  if (!state.queue.length) state.over = true; // nobody holds a tile: the supply is spent
+  events.push({ type: 'turn', player: state.current });
+  if (state.over) events.push({ type: 'over', score: state.score });
+  return events;
+}
+
+// An online move, as the game server sends it: `{ op: 'lay', q, r, rot, faction }`,
+// `{ op: 'discard', faction }` or `{ op: 'step' }` (the end of the turn). A move counts only if
+// it comes from the seat whose turn it is and is legal now; every browser refuses the same
+// ones, and a refused move changes nothing. Returns the events, or null if refused.
+export function command(state, c) {
+  if (!isMulti(state) || state.over || !c) return null;
+  if (c.op === 'step') return endTurn(state);
+  const who = Number.isInteger(c.faction) ? state.players.findIndex((p) => p.seat === c.faction) : -1;
+  if (who < 0 || who !== state.current) return null;
+  if (c.op === 'lay') {
+    if (![c.q, c.r, c.rot].every(Number.isInteger) || c.rot < 0 || c.rot > 5) return null;
+    return place(state, c.q, c.r, c.rot);
+  }
+  if (c.op === 'discard') return discard(state);
+  return null;
+}
+
+// The game as text with every object's keys in order, so the same game reads the same anywhere.
+export function canonical(v) {
+  if (Array.isArray(v)) return '[' + v.map(canonical).join(',') + ']';
+  if (v && typeof v === 'object') {
+    return '{' + Object.keys(v).sort().filter((k) => v[k] !== undefined).map((k) => JSON.stringify(k) + ':' + canonical(v[k])).join(',') + '}';
+  }
+  return JSON.stringify(v);
+}
+
+// A fingerprint of the game (two FNV-1a hashes of its canonical text), for browsers to check
+// that they agree.
+export function fingerprint(state) {
+  const text = canonical(state);
+  let a = 0x811c9dc5;
+  let b = 0x01000193 ^ text.length;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    a = Math.imul(a ^ c, 0x01000193) >>> 0;
+    b = Math.imul(b ^ c, 0x5bd1e995) >>> 0;
+    b = (b ^ (b >>> 15)) >>> 0;
+  }
+  return a.toString(16).padStart(8, '0') + b.toString(16).padStart(8, '0');
+}
+
+// Players from the most renown to the least, each with their place (a tie shares it).
+export function standings(state) {
+  if (!isMulti(state)) return [];
+  const list = state.players.map((p, i) => ({ i, name: p.name, color: p.color, score: isRival(state) ? p.score : null, laid: 0 }));
+  for (const t of Object.values(state.tiles)) if (t.by !== undefined) list[t.by].laid++;
+  if (!isRival(state)) return list;
+  list.sort((a, b) => b.score - a.score || a.i - b.i);
+  list.forEach((p, k) => { p.place = k && p.score === list[k - 1].score ? list[k - 1].place : k + 1; });
+  return list;
+}
+
+// ---------- private charters (a shared realm) ----------
+
+// What a private charter can ask of the tiles a player laid: so many of one land, roads or
+// rivers on so many of them, or workshops standing on so many of them.
+const PRIVATE_KINDS = ['forest', 'field', 'village', 'road', 'river', 'workshop'];
+const PRIVATE_STEP = { forest: 4, field: 3, village: 3, road: 3, river: 2, workshop: 1 };
+const IS_WORKSHOP = new Set(WORKSHOPS.map((w) => w.building));
+
+function mine(state, i, test) {
+  let n = 0;
+  for (const t of Object.values(state.tiles)) if (t.by === i && test(t)) n++;
+  return n;
+}
+
+export function privateProgress(state, i, c) {
+  switch (c.kind) {
+    case 'road': return mine(state, i, (t) => BASES[t.base].edges.includes('R'));
+    case 'river': return mine(state, i, (t) => BASES[t.base].edges.includes('W'));
+    case 'workshop': return mine(state, i, (t) => IS_WORKSHOP.has(t.building));
+  }
+  return mine(state, i, (t) => t.feature === c.kind);
+}
+
+export function privateText(c) {
+  const n = c.n;
+  const s = n > 1 ? 's' : '';
+  switch (c.kind) {
+    case 'forest': return `Lay ${n} forest tile${s}`;
+    case 'field': return `Lay ${n} field${s}`;
+    case 'village': return `Lay ${n} village tile${s}`;
+    case 'road': return `Your roads across ${n} tile${s}`;
+    case 'river': return `Your rivers across ${n} tile${s}`;
+    case 'workshop': return `A workshop on ${n} of your tiles`;
+  }
+  return '';
+}
+
+// A new private charter for player i: something more than they have now, never the same kind
+// twice running.
+function makePrivate(state, i, not = null) {
+  const options = PRIVATE_KINDS.filter((k) => k !== not);
+  const kind = options[Math.floor(rand(state) * options.length)];
+  const step = PRIVATE_STEP[kind] + Math.floor(rand(state) * 2);
+  const c = { id: state.nextCharter++, kind };
+  c.n = privateProgress(state, i, c) + step;
+  c.pts = 6 + 4 * step;
+  c.tiles = 2;
+  return c;
+}
+
+// After every move, each player's private charter, in turn order: its reward goes to the realm.
+function checkPrivate(state, events) {
+  state.players.forEach((p, i) => {
+    const c = p.charter;
+    if (!c || privateProgress(state, i, c) < c.n) return;
+    gain(state, c.pts, null);
+    state.supply += c.tiles;
+    state.stats.charters++;
+    events.push({ type: 'charter', text: privateText(c), pts: c.pts, tiles: c.tiles, private: i });
+    p.charter = makePrivate(state, i, c.kind);
+  });
 }
