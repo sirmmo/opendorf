@@ -194,6 +194,12 @@ a one-off, then `window.openachievements?.unlock('ID')` where it happens), check
 openachievements CLI (`openachievements check achievements.json`), and import the list in the
 Wavedash Developer Portal (`openachievements wavedash achievements.json` writes the import JSON).
 
+From the list a player can also collect them as badges on [Badge Collector](https://badgecollector.org)
+(an email, hashed in the browser; only the hash is kept and sent), where OpenDorf is the public
+client `opendorf`. A new achievement needs its badge there too (`openachievements badgecollector
+achievements.json --name OpenDorf --hue 95 --origin … -o <badgecollector checkout>`, then a pull
+request).
+
 ## Development
 
 Plain HTML, CSS and JavaScript modules. No build step and no dependencies at runtime.

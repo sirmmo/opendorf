@@ -35,6 +35,7 @@
     { "id": "CARTOGRAPHER", "title": "Cartographer", "description": "Download a map of your realm.", "secret": true }
   ],
   "platforms": {
-    "wavedash": { "game_id": "j97dha4t7tn1hf1sqpsnwtcgm58jxnnp" }
+    "wavedash": { "game_id": "j97dha4t7tn1hf1sqpsnwtcgm58jxnnp" },
+    "badgecollector": { "client": "opendorf" }
   }
 }
