@@ -57,6 +57,8 @@ around them to work.
    second windmill, a quarry…). While a camp stands, a charter may ask you to clear it.
 9. **Tiles run out.** You start with 40. Every building and every charter brings more. When
    the last tile is laid, the realm is complete.
+10. **Play together**, two to four of you, on one device or online: build one *shared realm*,
+    or play *rival lords* on one map. See [Playing together](#playing-together).
 
 Renown per tile: +1 for each neighbour, +2 for each neighbour with the same land, +2 for each
 road or river joined, +1 for each stretch of sea joined. Buildings and charters add their own.
@@ -74,6 +76,67 @@ work as in the normal game, but the tiles never run out and the realm never ends
 saves apart from your normal realm (open it directly with `?mode=sandbox`); *Back to my realm*
 returns to where you left off, and *New sandbox realm* starts over.
 
+## Playing together
+
+Menu → *Play together*. Choose how to play, the players (two to four, each with a name and a
+colour of their own: blue, red, yellow or green) and a seed, then *Play on this device* or *Open
+an online room*.
+
+**Turns.** Players take turns in order. Everyone has their own hand of three tiles, all drawn
+from the realm's one supply, so the realm still ends when the supply runs out. On your turn you
+lay your tile or discard it, and the turn passes on (a player with nothing left in hand is
+passed over). There is no undo and no sandbox when playing together, and games together earn no
+achievements.
+
+**Shared realm** (co-operative). You build one realm together: renown, the supply and the royal
+charters are everyone's. Each player also has a **private charter**, judged only on the tiles
+they laid: *lay N forest tiles* (or fields, or village tiles), *your roads across N tiles*, *your
+rivers across N tiles* (fords and bridges count) or *a workshop on N of your tiles*. Its reward
+(renown and 2 tiles) goes to the realm, and a new one, of another kind, is dealt when it is
+fulfilled. Hover over a tile (or tap it) to see who laid it.
+
+**Rival lords** (competitive). One map, and every tile flies the banner of whoever laid it (a flag
+in its corner, a rim in their colour, and buildings with roofs in their colour). Renown is
+counted for each player, and the end screen ranks them.
+
+- A tile's own renown (its neighbours, the roads and rivers it joins) goes to whoever laid it.
+- A building earns for the owner of the house (or the tile) it stands on.
+- A land (a forest, a range, a river…) or a village is **held** by whoever laid most of its
+  tiles; when two are level, both hold it. The group's next building goes up on one of its
+  holders' free houses if they have one (the nearest to the last move), so when groups merge,
+  the next building follows the new majority. A building that can only stand on the hearth, which
+  no one laid, earns for the holders, shared equally (any odd point to the player to move first).
+- Clearing a camp earns for the owner of the watchtower or Barracks that cleared it.
+- A royal charter rewards the player whose move fulfilled it.
+- The supply is still shared: every building and charter adds tiles for everyone.
+
+**On this device.** Between turns a *Pass to (name)* curtain comes down in the next player's
+colour. The game saves after every move in a slot of its own (`opendorf.together` in
+`localStorage`), so a solo realm is never overwritten, and a reload goes back to it
+(`?mode=together`). Menu → *Back to my realm* returns to the solo realm.
+
+**Online.** Online games go through the Lilienstern game server
+(`wss://lilienstern.fantasymaps.org/ws`; `?server=ws://…/ws` uses another, for tests). The host
+opens a room and gets a code: friends open the invite link (`?join=CODE`) or type the code, and
+each sits in one of the seats the host named. The host picks the pace (no time limit, or 30
+seconds, 1 or 2 minutes a turn) and begins. The way to play, the seed and the seats are fixed
+when the room is opened.
+
+The server never runs the game: it keeps the room's moves in one order and sends each to
+everyone, and every browser plays them on its own copy of the realm. A turn is one of the
+server's days. The player to move sends their move (`lay` with `q`, `r`, `rot`, or `discard`);
+every browser applies a move only if it comes from the player whose turn it is and is legal
+then, so they all refuse the same ones. Once the move is in, every browser ends the day, and at
+the server's `step` the turn passes on. If the turn ends without a move (the pace's clock ran
+out, or someone pressed *Skip this turn* for a player who is away), every browser throws that
+player's tile away first. After each turn every browser sends a fingerprint of its realm; if two
+differ, the server has everyone replay the game from its log. A reload, or a player coming back,
+rebuilds the game from the log. While you wait you see the current player's hand and can try
+their tile on the board; the bar above the tray says who is thinking, and how long is left.
+
+If the game server can't be reached (on Wavedash, for one, whose site the server does not
+accept), the page says so, and playing together on one device still works.
+
 ## Map export (GeoJSON)
 
 Menu → *Download map (GeoJSON)* (also on the end screen) saves the realm as a GeoJSON
@@ -86,7 +149,7 @@ FeatureCollection. Each feature has a `layer` property:
 | `road`, `waterway` | MultiLineString | Each road and river network |
 | `building` | Point | Workshops, town buildings, the witch's hut, churchyards and houses (`building`, `name`); a tavern carries its OpenInn `url` |
 | `site` | Point | Camps and the dungeon mouth (`site`: `bandit_camp`, `wolf_den` or `dungeon`; `name`; the dungeon's OpenDelve `url`) |
-| `tile` | Polygon | Every tile: `q`, `r`, `base`, `model`, `rotation`, `edges`, `feature`, `building`, `camp`, `dungeon`, `order` |
+| `tile` | Polygon | Every tile: `q`, `r`, `base`, `model`, `rotation`, `edges`, `feature`, `building`, `camp`, `dungeon`, `order`; played together, `laid_by` (a player's name) |
 
 Building ids: `lumbermill`, `windmill`, `watermill`, `mine`, `watchtower`, `quarry`, `herbgarden`,
 `digsite`, `well`, `tavern`, `market`, `church`, `castle`, `blacksmith`, `barracks`, `archery`,
@@ -106,6 +169,9 @@ somewhere else, open the game with `?origin=lon,lat` (for example `?origin=11.34
 | Zoom | wheel, `+` / `-` | pinch |
 | Undo, discard, center | `Z`, `X`, `C` | ↶ and crosshair buttons, *Discard* |
 | Achievements | `L` (`Esc` to close) | trophy button |
+| Play together | menu → *Play together* | the same |
+| Who laid a tile (together) | hover over it | tap it |
+| Skip an absent player's turn (online) | *Skip this turn* on the turn bar | the same |
 | Choose a tile (sandbox) | click it in the palette, `T` / `Shift+T` for the next / previous | tap it in the strip above the tray (swipe for more) |
 
 ## Achievements
@@ -116,7 +182,8 @@ reported by the openachievements library (`vendor/openachievements/`: its browse
 WebAssembly core): saved in `localStorage` (`openachievements:opendorf`)
 and, on Wavedash, sent to Wavedash as well.
 
-Only normal realms earn them: the sandbox counts nothing (but the map download). `js/main.js`
+Only solo normal realms earn them: the sandbox counts nothing (but the map download), and games
+played together count nothing at all. `js/main.js`
 reports after every move (`tally`): the realm's tiles, buildings and charters as running totals,
 its renown as a best, the end of a realm, and one-off unlocks (castle, Academy, every trade, a
 river into the sea, the map download). What a realm has counted is kept in the save
@@ -134,22 +201,28 @@ Plain HTML, CSS and JavaScript modules. No build step and no dependencies at run
 ```sh
 python3 -m http.server 8000      # then open http://localhost:8000
 npm test                          # rules tests (Node 20+)
+docker run --rm -v $PWD:/w -w /w node:22-slim npm test   # the same, with an old Node on the host
 node tools/balance.mjs 1 2 3      # greedy games per seed: length, score, buildings
 ```
 
 | Path | What |
 | --- | --- |
 | `js/tiles.js` | Tile edges, the tile bag, the sandbox palette, buildings, workshop and village rules |
-| `js/rules.js` | The game: pure, seeded and JSON-serialisable (`newGame`, `place`, `preview`, `discard`, and `choose` for the sandbox) |
+| `js/rules.js` | The game: pure, seeded and JSON-serialisable (`newGame`, `place`, `preview`, `discard`, and `choose` for the sandbox; for games together `endTurn`, `command` for an online move, `fingerprint`, `standings`) |
+| `js/saves.js` | Save slots: the normal realm, the sandbox and a game together on one device |
+| `js/net.js` | The line to the Lilienstern game server for online games |
 | `js/view.js` | three.js board, ghost tile, spots, construction animation, hand thumbnails |
 | `js/geojson.js`, `js/geo.js` | GeoJSON export: projection and merging tiles into outlines |
-| `js/main.js` | Input, HUD, saving, undo, map download, achievements |
+| `js/main.js` | Input, HUD, saving, undo, map download, achievements; playing together (setup, curtain, online room) |
 | `achievements.json`, `vendor/openachievements/` | Achievements and stats; the openachievements browser host and its `.wasm` |
 | `tools/edges.py`, `tools/heights.py` | Measure which tile edges carry road, river or sea, and the height of each corner, from the KayKit meshes |
 | `models/` | The subset of the KayKit packs the game uses (glTF + each pack's shared texture); `models/ruins/` the Quaternius ruins pieces (GLB, flat colours); `models/nature/` and `models/graveyard/` the Kenney pieces (GLB; the Graveyard Kit with its own `Textures/colormap.png`) |
 
 The rules never touch the DOM or three.js, so the tests and the balance script run them
-directly in Node.
+directly in Node. `tests/solo.test.mjs` checks that solo realms still deal, play and score
+exactly as they did before playing together came in, against games recorded then
+(`tests/fixtures/solo-before-multiplayer.json`); `tests/together.test.mjs` covers turns, the rival
+renown, private charters, the turn that runs out, replaying an online move list and saves.
 
 ## Credits
 

@@ -91,6 +91,8 @@ export function toGeoJSON(state, { origin = [0, 0], metersPerUnit = 50 } = {}) {
       layer: 'tile', q: t.q, r: t.r, base: t.base, model: BASES[t.base].model, rotation: t.rot * 60,
       edges, feature: t.feature || null, building: t.building || null, camp: t.camp || null, dungeon: !!t.dungeon,
       neighbours, order: t.id,
+      // Played together: who laid it (a solo realm's tiles have no such property).
+      ...(t.by !== undefined && state.players ? { laid_by: state.players[t.by]?.name ?? null } : {}),
     }));
   }
 

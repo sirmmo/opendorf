@@ -1,7 +1,9 @@
 import { View } from './view.js';
 import * as R from './rules.js';
-import { BUILDINGS, CAMPS, PALETTE, PALETTE_GROUPS, tileName } from './tiles.js';
+import { BANNERS, BUILDINGS, CAMPS, PALETTE, PALETTE_GROUPS, tileName } from './tiles.js';
 import { toGeoJSON } from './geojson.js';
+import { loadSaved as loadSlot, saveGame } from './saves.js';
+import * as Net from './net.js';
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -21,6 +23,17 @@ let touchMode = false;
 let previewCache = { k: '', v: null };
 let seenCharters = new Set();
 const floaters = [];
+// Playing together: null alone; { local: true } taking turns on this device; { online: true }
+// through the game server (see "online" below, and `net`).
+let together = null;
+let curtain = null; // on this device: the "Pass to" curtain due or showing, { i, timer }
+let net = null;
+
+const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const bannerOf = (i) => BANNERS[state.players?.[i]?.color] || BANNERS.blue;
+const nameOf = (i) => esc(state.players?.[i]?.name ?? '');
+// A player's name with a dot of their colour, for the HUD and the news.
+const who = (i) => `<span class="who" style="--c:${bannerOf(i).hex}"><i></i>${nameOf(i)}</span>`;
 
 // ---------- game flow ----------
 
@@ -33,10 +46,19 @@ function todaySeed() {
   return `day-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-// A sandbox realm has no seed worth sharing: its link just says "sandbox".
+// A sandbox realm has no seed worth sharing: its link just says "sandbox". An online game's link
+// is its room's, so a reload goes back in; a game together on this device says so.
 function setURL() {
   const u = new URL(location.href);
-  if (R.isSandbox(state)) {
+  u.searchParams.delete('join');
+  if (together?.online && net?.code) {
+    u.searchParams.delete('seed');
+    u.searchParams.delete('mode');
+    u.searchParams.set('join', net.code);
+  } else if (together) {
+    u.searchParams.delete('seed');
+    u.searchParams.set('mode', 'together');
+  } else if (R.isSandbox(state)) {
     u.searchParams.delete('seed');
     u.searchParams.set('mode', 'sandbox');
   } else {
@@ -46,17 +68,10 @@ function setURL() {
   history.replaceState(null, '', u);
 }
 
-// The normal game and the sandbox keep separate saves, so one never overwrites the other.
-const SAVES = {
-  normal: { game: 'opendorf.save', undo: 'opendorf.undo' },
-  sandbox: { game: 'opendorf.sandbox', undo: 'opendorf.sandbox.undo' },
-};
-
-function loadSaved(mode) {
-  let saved = null;
-  try { saved = JSON.parse(store.get(SAVES[mode].game) || 'null'); } catch { saved = null; }
-  if (!saved || saved.version !== 1 || saved.over || (saved.mode || 'normal') !== mode) return null;
-  return { saved, undo: store.get(SAVES[mode].undo) };
+// The normal game, the sandbox and a game together on this device keep separate saves (see
+// saves.js), so one never overwrites another.
+function loadSaved(slot) {
+  return loadSlot(store, slot);
 }
 
 function startSandbox() {
@@ -75,43 +90,69 @@ function leaveSandbox() {
   else startGame(randomSeed());
 }
 
-function startGame(seed, mode = 'normal') {
-  state = R.newGame(seed, { mode });
-  undoJSON = null;
+// Every charter in play: the royal ones, and the players' own in a shared realm.
+const allCharters = () => [...state.charters, ...(state.players || []).map((p) => p.charter).filter(Boolean)];
+
+// Shows a realm: a new one (`fresh`, the view at the hearth) or one to go on with.
+function enter(s, { undo = null, fresh = false } = {}) {
+  state = s;
+  undoJSON = undo || null;
   paletteTab = null;
   selected = null;
-  wantRot = 0;
-  seenCharters = new Set(state.charters.map((c) => c.id));
+  if (fresh) wantRot = 0;
+  previewCache = { k: '', v: null };
+  seenCharters = new Set(allCharters().map((c) => c.id));
+  view.setPlayers(state);
+  view.setHint(null);
   view.clear();
   view.sync(state, { animate: false });
-  view.cam.target.set(0, 0, 0);
-  view.cam.dist = 15;
+  if (fresh) {
+    view.cam.target.set(0, 0, 0);
+    view.cam.dist = 15;
+  } else {
+    view.frame(state);
+  }
   $('over').hidden = true;
   setURL();
+}
+
+function startGame(seed, mode = 'normal') {
+  dropOnline();
+  together = null;
+  enter(R.newGame(seed, { mode }), { fresh: true });
   save();
   onTurn();
 }
 
 function resume(saved, undo) {
-  state = saved;
-  undoJSON = undo || null;
-  paletteTab = null;
-  seenCharters = new Set(state.charters.map((c) => c.id));
-  view.clear();
-  view.sync(state, { animate: false });
-  view.frame(state);
-  $('over').hidden = true;
-  selected = null;
-  setURL();
-  store.set('opendorf.mode', state.mode || 'normal');
+  dropOnline();
+  together = R.isMulti(saved) ? { local: true } : null;
+  enter(saved, { undo });
+  save();
   onTurn();
+  if (together) curtainFor(state.current, 0);
 }
 
+// An online game is not saved here: the game server keeps its moves.
 function save() {
-  const keys = SAVES[R.isSandbox(state) ? 'sandbox' : 'normal'];
-  store.set(keys.game, JSON.stringify(state));
-  store.set(keys.undo, undoJSON || '');
-  store.set('opendorf.mode', state.mode || 'normal');
+  if (together?.online) return;
+  saveGame(store, state, undoJSON);
+  store.set('opendorf.mode', R.isMulti(state) ? 'together' : state.mode || 'normal');
+}
+
+// May this device make a move now?
+function canAct() {
+  if (!together) return true;
+  if (state.over) return false;
+  if (together.local) return !curtain;
+  return !!net && net.me === state.current && !state.moved && !net.pending;
+}
+
+let notYetShown = 0;
+function notYourTurn() {
+  if (performance.now() - notYetShown < 2500) return;
+  notYetShown = performance.now();
+  toast(together?.local ? 'Pass the device on first.' : `It is ${nameOf(state.current)}'s turn.`);
 }
 
 function onTurn() {
@@ -125,7 +166,8 @@ function onTurn() {
     view.thumbs.draw($('thumb1'), state.queue[1], 0);
     view.thumbs.draw($('thumb2'), state.queue[2], 0);
   }
-  $('bUndo').disabled = !undoJSON;
+  $('bUndo').disabled = !undoJSON || !!together;
+  $('bDiscard').disabled = !canAct();
   if (state.over) setTimeout(showOver, 900);
 }
 
@@ -151,7 +193,16 @@ function refreshGhost() {
   const tip = $('tip');
   let legal = false;
   shownRot = wantRot;
-  if (!c || !piece || R.tileAt(state, c.q, c.r) || !touchesRealm(c)) {
+  // Together, a laid tile under the mouse says who laid it (in a shared realm with its rim too).
+  const laid = c && !touchMode && R.isMulti(state) ? R.tileAt(state, c.q, c.r) : null;
+  const owned = laid && laid.by !== undefined;
+  view.setHint(owned && !R.isRival(state) ? laid : null);
+  if (owned) {
+    view.setGhost(null);
+    tip.hidden = false;
+    tip.classList.remove('bad');
+    tip.innerHTML = `Laid by ${who(laid.by)}`;
+  } else if (!c || !piece || R.tileAt(state, c.q, c.r) || !touchesRealm(c)) {
     view.setGhost(null);
     tip.hidden = true;
   } else {
@@ -165,11 +216,13 @@ function refreshGhost() {
       const p = previewAt(c.q, c.r, shownRot);
       const lines = [];
       for (const e of p.events) {
-        if (e.type === 'build') lines.push(`<span class="b">${BUILDINGS[e.building].verb === 'laid out' ? 'lays out' : 'raises'} ${aOrAn(BUILDINGS[e.building].name)}</span>`);
-        if (e.type === 'clear') lines.push(`<span class="b">clears the ${CAMPS[e.camp].name.toLowerCase()}</span>`);
-        if (e.type === 'charter') lines.push(`<span class="b">fulfils a charter</span>`);
+        // In a rival game, say when the renown would go to someone else.
+        const other = e.to && !e.to.includes(state.current) ? ` (for ${e.to.map(nameOf).join(' and ')})` : '';
+        if (e.type === 'build') lines.push(`<span class="b">${BUILDINGS[e.building].verb === 'laid out' ? 'lays out' : 'raises'} ${aOrAn(BUILDINGS[e.building].name)}${other}</span>`);
+        if (e.type === 'clear') lines.push(`<span class="b">clears the ${CAMPS[e.camp].name.toLowerCase()}${other}</span>`);
+        if (e.type === 'charter') lines.push(`<span class="b">fulfils ${e.private !== undefined ? `${nameOf(e.private)}'s charter` : 'a charter'}</span>`);
       }
-      tip.innerHTML = `<span class="pts">+${p.pts}</span>${lines.join('')}`;
+      tip.innerHTML = `<span class="pts">+${p.mine ?? p.pts}</span>${lines.join('')}`;
     } else {
       tip.textContent = "Doesn't fit here";
     }
@@ -190,7 +243,7 @@ function spotList() {
 
 function previewAt(q, r, rot) {
   const p = state.queue[0];
-  const k = `${state.turn}|${p.base}|${p.feature}|${p.v}|${q}|${r}|${rot}`;
+  const k = `${state.turn}|${state.current}|${p.base}|${p.feature}|${p.v}|${q}|${r}|${rot}`;
   if (previewCache.k !== k) previewCache = { k, v: R.preview(state, q, r, rot) };
   return previewCache.v;
 }
@@ -215,34 +268,59 @@ function placeAt(c, forceRot) {
   if (!c || state.over) return;
   const rots = spots.get(R.key(c.q, c.r));
   if (!rots) return;
-  const before = JSON.stringify(state);
+  if (!canAct()) {
+    notYourTurn();
+    return;
+  }
   const rot = forceRot ?? nearestLegal(rots, wantRot);
+  // Online the move goes to the server, and is made when it comes back, as everyone's are.
+  if (together?.online) {
+    request({ op: 'lay', q: c.q, r: c.r, rot });
+    return;
+  }
+  const before = JSON.stringify(state);
   const events = R.place(state, c.q, c.r, rot);
   if (!events) return;
-  undoJSON = before;
+  undoJSON = together ? null : before;
   selected = null;
   view.sync(state);
   react(events);
   tally(events);
+  if (together) passTurn();
   save();
   onTurn();
 }
 
 function discardTile() {
   if (state.over || R.isSandbox(state)) return;
+  if (!canAct()) {
+    notYourTurn();
+    return;
+  }
+  if (together?.online) {
+    request({ op: 'discard' });
+    return;
+  }
   const before = JSON.stringify(state);
   const events = R.discard(state);
   if (!events) return;
-  undoJSON = before;
+  undoJSON = together ? null : before;
   toast('Tile thrown away');
   tally(events);
+  if (together) passTurn();
   hud();
   save();
   onTurn();
 }
 
+// On this device: the turn passes on, and once the news has played, the curtain comes down.
+function passTurn() {
+  R.endTurn(state);
+  if (!state.over) curtainFor(state.current, 1400);
+}
+
 function undo() {
-  if (!undoJSON) return;
+  if (!undoJSON || together) return;
   const ach = state.ach; // what was counted stays counted (see tally)
   state = JSON.parse(undoJSON);
   if (ach) state.ach = ach;
@@ -257,13 +335,17 @@ function react(events) {
   let delay = 0;
   // Extra tiles mean nothing in the sandbox, so the news leaves them out.
   const more = (n) => (R.isSandbox(state) ? '' : ` · +${n} tile${n > 1 ? 's' : ''}`);
+  // In a rival game, whose renown it is.
+  const forWhom = (e) => (e.to ? ` for ${e.to.map(who).join(' and ')}` : '');
+  const rival = R.isRival(state);
   for (const e of events) {
-    if (e.type === 'place') floater(e.q, e.r, `+${e.pts}`, '', 0);
+    if (e.type === 'place') floater(e.q, e.r, `+${e.pts}`, '', 0, rival ? bannerOf(e.by).hex : null);
+    if (e.type === 'discard' && e.timeout) toast(`${who(e.by)}'s time ran out: the tile is thrown away`);
     if (e.type === 'build') {
       const b = BUILDINGS[e.building];
       delay += 0.5;
       floater(e.q, e.r, b.name, 'build', delay);
-      toast(`<b>${b.name}</b> ${b.verb || 'raised'} · +${e.pts} renown${more(e.tiles)}`);
+      toast(`<b>${b.name}</b> ${b.verb || 'raised'} · +${e.pts} renown${forWhom(e)}${more(e.tiles)}`);
     }
     // The wild: a camp turns up, a camp is cleared, a dungeon mouth opens.
     if (e.type === 'camp') toast(e.camp === 'bandits'
@@ -272,10 +354,13 @@ function react(events) {
     if (e.type === 'clear') {
       delay += 0.5;
       floater(e.q, e.r, 'Cleared', 'build', delay);
-      toast(`<b>${CAMPS[e.camp].name}</b> cleared · +${e.pts} renown${more(e.tiles)}`);
+      toast(`<b>${CAMPS[e.camp].name}</b> cleared · +${e.pts} renown${forWhom(e)}${more(e.tiles)}`);
     }
     if (e.type === 'dungeon') toast('A dark way opens under the mountain. <b>Tap it</b> to look inside.');
-    if (e.type === 'charter') toast(`Charter fulfilled: ${e.text} · <b>+${e.pts}</b>${more(e.tiles)}`);
+    if (e.type === 'charter') {
+      const whose = e.private !== undefined ? `${who(e.private)}'s charter` : 'Charter';
+      toast(`${whose} fulfilled: ${e.text} · <b>+${e.pts}</b>${forWhom(e)}${more(e.tiles)}`);
+    }
   }
   bump('score');
   if (events.some((e) => e.type === 'build' || e.type === 'charter' || e.type === 'clear')) bump('supply');
@@ -284,15 +369,17 @@ function react(events) {
 // ---------- achievements ----------
 
 // achievements.json lists them; vendor/openachievements keeps the player's progress and reports
-// it (to Wavedash, when the game runs there). Only normal realms earn them: in the sandbox every
-// tile is chosen, so it counts nothing (but the map download). What a realm has already counted
+// it (to Wavedash, when the game runs there). Only solo normal realms earn them: in the sandbox
+// every tile is chosen, so it counts nothing (but the map download), and a game together counts
+// nothing at all. What a realm has already counted
 // travels with it in `state.ach`, which undo leaves alone, so a move undone and made again is
 // not counted twice.
 const TRADES = ['lumbermill', 'windmill', 'watermill', 'mine', 'watchtower'];
 
 function tally(events) {
   const oa = window.openachievements;
-  if (!oa || R.isSandbox(state)) return;
+  // Only a realm of one's own counts: not the sandbox, and not a game together.
+  if (!oa || R.isSandbox(state) || R.isMulti(state)) return;
   const m = state.ach || (state.ach = { placed: 0, built: 0, charters: 0, renown: 0, over: false });
   const count = (stat, k) => {
     const n = state.stats[k];
@@ -398,6 +485,7 @@ function insets() {
   if ($('hud').hidden) return;
   const top = Math.max($('scorecard').getBoundingClientRect().bottom, $('charters').getBoundingClientRect().bottom);
   let bottom = $('hand').getBoundingClientRect().top;
+  if (!$('turnbar').hidden) bottom = Math.min(bottom, $('turnbar').getBoundingClientRect().top);
   // On phones the sandbox palette sits right above the tray.
   const pal = $('palette').getBoundingClientRect();
   if (!$('palette').hidden && pal.top > window.innerHeight / 2) bottom = Math.min(bottom, pal.top);
@@ -407,10 +495,17 @@ window.addEventListener('resize', insets);
 
 function hud() {
   const sandbox = R.isSandbox(state);
+  const multi = R.isMulti(state);
+  const rival = R.isRival(state);
   document.body.classList.toggle('sandbox', sandbox);
+  document.body.classList.toggle('together', multi);
+  document.body.classList.toggle('online', !!together?.online);
+  document.body.classList.toggle('rival', rival);
   $('modeTag').hidden = !sandbox;
+  $('playTag').hidden = !multi;
+  $('playTag').textContent = rival ? 'Rival lords' : 'Shared realm';
   $('palette').hidden = !sandbox;
-  $('menuTitle').textContent = sandbox ? 'Sandbox' : 'Realm';
+  $('menuTitle').textContent = sandbox ? 'Sandbox' : multi ? (rival ? 'Rival lords' : 'Shared realm') : 'Realm';
   $('score').textContent = state.score;
   $('supply').textContent = sandbox ? '∞' : state.supply;
   $('supply').classList.toggle('low', !sandbox && state.supply <= 5);
@@ -426,6 +521,29 @@ function hud() {
     box.appendChild(el);
     seenCharters.add(c.id);
   }
+  // A shared realm: the private charter of the player at this device (online), or of the
+  // player whose turn it is (on one device).
+  const pi = multi && !rival ? (together?.online && net?.me >= 0 ? net.me : state.current) : -1;
+  const pc = pi >= 0 ? state.players[pi].charter : null;
+  if (pc) {
+    const now = Math.min(R.privateProgress(state, pi, pc), pc.n);
+    const el = document.createElement('div');
+    el.className = 'charter card private' + (seenCharters.has(pc.id) ? '' : ' fresh');
+    el.style.setProperty('--c', bannerOf(pi).hex);
+    const whose = together?.online && pi === net?.me ? 'Your charter' : `${nameOf(pi)}'s charter`;
+    el.innerHTML = `<div class="head"><span class="seal">${whose}</span><span class="reward">+${pc.pts} · +${pc.tiles} tiles</span></div>
+      <div class="txt">${R.privateText(pc)} <small>(${now}/${pc.n})</small></div>
+      <div class="prog"><i style="width:${(100 * now) / pc.n}%"></i></div>`;
+    // On a phone the heading is hidden: the line itself says whose it is.
+    el.querySelector('.txt').dataset.who = together?.online && pi === net?.me ? 'You' : state.players[pi].name;
+    box.appendChild(el);
+    seenCharters.add(pc.id);
+  }
+  playersHud();
+  turnHud();
+  $('togetherLabel').innerHTML = together?.online && net
+    ? `Room <b>${esc(net.code)}</b> · seed <code>${esc(state.seed)}</code>`
+    : `On this device · seed <code>${esc(state.seed)}</code>`;
   $('seedLabel').textContent = state.seed;
   $('best').textContent = store.get('opendorf.best') || 0;
   insets();
@@ -447,10 +565,11 @@ function toast(html) {
   while ($('toasts').children.length > 3) $('toasts').firstChild.remove();
 }
 
-function floater(q, r, text, cls, delay) {
+function floater(q, r, text, cls, delay, color = null) {
   const el = document.createElement('div');
   el.className = 'floater ' + cls;
   el.textContent = text;
+  if (color) el.style.color = color;
   el.style.opacity = 0;
   $('floaters').appendChild(el);
   floaters.push({ el, q, r, t: -delay, life: 1.4 });
@@ -483,13 +602,30 @@ view.onFrame = (dt) => {
 
 function showOver() {
   if (!state.over) return;
+  const s = state.stats;
+  $('finalStats').innerHTML = `<li>${s.placed} tiles laid</li><li>${s.built} buildings raised</li><li>${s.charters} charters fulfilled</li><li>Seed <code>${esc(state.seed)}</code></li>`;
+  $('finalRanks').hidden = !R.isMulti(state);
+  if (R.isMulti(state)) {
+    // Together: no best realm to keep. Rival lords are ranked; a shared realm thanks its builders.
+    const ranks = R.standings(state);
+    if (R.isRival(state)) {
+      const first = ranks.filter((p) => p.place === 1);
+      $('finalScore').textContent = first[0].score;
+      $('finalBest').innerHTML = `${first.map((p) => who(p.i)).join(' and ')} ${first.length > 1 ? 'share the realm' : 'wins the realm'}`;
+      $('finalRanks').innerHTML = ranks.map((p) => `<li><span class="place">${p.place}</span>${who(p.i)}<b>${p.score}</b></li>`).join('');
+    } else {
+      $('finalScore').textContent = state.score;
+      $('finalBest').textContent = 'Built together';
+      $('finalRanks').innerHTML = ranks.map((p) => `<li>${who(p.i)}<span>${p.laid} tiles laid</span></li>`).join('');
+    }
+    $('over').hidden = false;
+    return;
+  }
   const best = Math.max(Number(store.get('opendorf.best') || 0), state.score);
   const isBest = best === state.score && state.score > 0;
   store.set('opendorf.best', String(best));
   $('finalScore').textContent = state.score;
   $('finalBest').textContent = isBest ? 'A new best realm!' : `Best realm: ${best}`;
-  const s = state.stats;
-  $('finalStats').innerHTML = `<li>${s.placed} tiles laid</li><li>${s.built} buildings raised</li><li>${s.charters} charters fulfilled</li><li>Seed <code>${state.seed}</code></li>`;
   $('over').hidden = false;
 }
 
@@ -616,6 +752,14 @@ function tap(c) {
     showInn(t);
     return;
   }
+  // Together, on a touch screen: who laid this tile (the mouse sees it by hovering).
+  if (touchMode && t && t.by !== undefined && R.isMulti(state)) {
+    toast(`Laid by ${who(t.by)}`);
+    if (!R.isRival(state)) {
+      view.setHint(t);
+      setTimeout(() => view.setHint(null), 2000);
+    }
+  }
   if (!touchMode) {
     placeAt(c);
     return;
@@ -637,17 +781,19 @@ canvas.addEventListener('wheel', (e) => {
 window.addEventListener('keydown', (e) => {
   if (e.target.closest?.('input,textarea')) return;
   const k = e.key.toLowerCase();
-  if (k === 'l' && $('help').hidden && $('menu').hidden && $('dungeon').hidden && $('inn').hidden) {
+  const sheets = ['help', 'menu', 'dungeon', 'inn', 'together', 'lobby', 'curtain'];
+  if (k === 'l' && sheets.every((id) => $(id).hidden)) {
     toggleAchievements();
     e.preventDefault();
     return;
   }
-  const overlayOpen = !$('help').hidden || !$('menu').hidden || !$('dungeon').hidden || !$('inn').hidden || !!window.openachievements?.isListOpen();
+  const overlayOpen = sheets.some((id) => !$(id).hidden) || !!window.openachievements?.isListOpen();
   if (k === 'escape') {
     $('help').hidden = true;
     $('menu').hidden = true;
     $('dungeon').hidden = true;
     $('inn').hidden = true;
+    $('together').hidden = true;
     selected = null;
     refreshGhost();
     return;
@@ -721,21 +867,561 @@ function downloadGeo() {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-  window.openachievements?.unlock('CARTOGRAPHER');
+  if (!together) window.openachievements?.unlock('CARTOGRAPHER');
 }
 $('bGeo').onclick = downloadGeo;
 $('bOverGeo').onclick = downloadGeo;
 $('bOverNew').onclick = () => startGame(randomSeed());
+$('bOverAgain').onclick = () => { $('over').hidden = true; openTogether(true); };
+$('bOverLeave').onclick = leaveTogether;
+$('bTogether').onclick = () => { $('menu').hidden = true; openTogether(false); };
+$('bLeaveTogether').onclick = () => { $('menu').hidden = true; leaveTogether(); };
+$('bInvite').onclick = () => copyInvite();
 $('bOverRestart').onclick = () => startGame(state.seed);
 $('bOverLook').onclick = () => { $('over').hidden = true; view.frame(state); };
 $('bDungeonClose').onclick = () => { $('dungeon').hidden = true; };
 $('dungeonLink').onclick = () => { $('dungeon').hidden = true; };
 $('bInnClose').onclick = () => { $('inn').hidden = true; };
 $('innLink').onclick = () => { $('inn').hidden = true; };
-for (const id of ['help', 'menu', 'dungeon', 'inn']) {
+for (const id of ['help', 'menu', 'dungeon', 'inn', 'together']) {
   $(id).addEventListener('click', (e) => {
     if (e.target.id === id) $(id).hidden = true;
   });
+}
+
+// ---------- playing together ----------
+
+// Each player's chip: their colour, name and, in a rival game, renown; the one to play is lit.
+function playersHud() {
+  const box = $('players');
+  box.hidden = !R.isMulti(state);
+  if (box.hidden) return;
+  const rival = R.isRival(state);
+  box.innerHTML = state.players.map((p, i) => {
+    const now = i === state.current && !state.over ? ' now' : '';
+    const you = together?.online && i === net?.me ? ' <small>(you)</small>' : '';
+    return `<div class="pl${now}" style="--c:${bannerOf(i).hex}"><i></i><span class="nm">${nameOf(i)}${you}</span>${rival ? `<b>${p.score}</b>` : ''}</div>`;
+  }).join('');
+}
+
+// Whose turn it is, in their colour, above the tray.
+function turnHud() {
+  const bar = $('turnbar');
+  bar.hidden = !R.isMulti(state) || state.over;
+  if (bar.hidden) return;
+  const i = state.current;
+  const b = bannerOf(i);
+  bar.style.setProperty('--c', b.hex);
+  bar.style.setProperty('--on', b.ink);
+  let text = `${nameOf(i)}'s turn`;
+  let skip = false;
+  if (together?.online && net) {
+    if (net.me === i) {
+      text = state.moved || net.pending ? 'Your move is on its way…' : 'Your turn';
+    } else if (net.away.has(state.players[i].seat)) {
+      text = `${nameOf(i)} is away`;
+      skip = net.me >= 0 && !state.moved && !net.readySent && !net.ready.has(net.faction);
+    } else {
+      text = `${nameOf(i)} is thinking…`;
+    }
+  }
+  $('turnWho').innerHTML = text;
+  $('bSkip').hidden = !skip;
+  tick();
+}
+
+// The countdown to the end of an online turn, kept by the server's clock.
+function tick() {
+  const el = $('turnClock');
+  if (!together?.online || !net || state.over) {
+    el.textContent = '';
+    return;
+  }
+  if (net.paused) el.textContent = ' · paused';
+  else if (net.deadline === null) el.textContent = '';
+  else el.textContent = ` · ${Math.ceil(Math.max(0, net.deadline - performance.now()) / 1000)} s`;
+}
+setInterval(tick, 250);
+
+// ---------- on this device ----------
+
+// "Pass to <name>": a curtain in the next player's colour, after `delay` ms (once the news of the
+// last move has played). No one plays until it is lifted.
+function curtainFor(i, delay) {
+  clearTimeout(curtain?.timer);
+  curtain = { i, timer: setTimeout(showCurtain, delay) };
+  onTurn();
+}
+
+function showCurtain() {
+  if (!curtain || !together?.local || state.over) {
+    curtain = null;
+    $('curtain').hidden = true;
+    return;
+  }
+  const i = curtain.i;
+  const p = state.players[i];
+  const b = bannerOf(i);
+  $('curtain').style.setProperty('--c', b.hex);
+  $('curtain').style.setProperty('--on', b.ink);
+  $('curtainName').textContent = p.name;
+  $('curtainInfo').innerHTML = R.isRival(state)
+    ? `Hand the device to ${nameOf(i)}, who has <b>${p.score}</b> renown.`
+    : `Hand the device to ${nameOf(i)}.${p.charter ? ` Their charter: <i>${R.privateText(p.charter)}</i>.` : ''}`;
+  $('bCurtain').textContent = `I am ${p.name}`;
+  $('curtain').hidden = false;
+}
+
+$('bCurtain').onclick = () => {
+  $('curtain').hidden = true;
+  curtain = null;
+  selected = null;
+  onTurn();
+};
+
+// The setup sheet: how to play, who plays (2 to 4, each a name and a colour of their own), the
+// seed; then this device, or an online room.
+const COLOURS = Object.keys(BANNERS);
+let seats = [];
+
+function loadSeats() {
+  try {
+    const s = JSON.parse(store.get('opendorf.together.players') || 'null');
+    if (Array.isArray(s) && s.length >= R.MIN_PLAYERS && s.length <= R.MAX_PLAYERS) return s;
+  } catch { /* none kept */ }
+  return [{ name: 'Player 1', color: 'blue' }, { name: 'Player 2', color: 'red' }];
+}
+
+function renderSeats() {
+  const box = $('seats');
+  box.innerHTML = '';
+  seats.forEach((p, i) => {
+    const row = document.createElement('div');
+    row.className = 'seat';
+    row.style.setProperty('--c', BANNERS[p.color].hex);
+    const sw = COLOURS.map((c) => `<button class="sw${c === p.color ? ' on' : ''}" data-c="${c}" style="--c:${BANNERS[c].hex}" title="${BANNERS[c].name}" aria-label="${BANNERS[c].name}"></button>`).join('');
+    row.innerHTML = `<span class="sws">${sw}</span><input maxlength="24" aria-label="Name of player ${i + 1}" value="${esc(p.name)}">`
+      + `<button class="x" title="Remove" aria-label="Remove this player"${seats.length <= R.MIN_PLAYERS ? ' disabled' : ''}>×</button>`;
+    // A colour another player has is swapped with theirs: every colour stays someone's own.
+    row.querySelectorAll('.sw').forEach((b) => {
+      b.onclick = () => {
+        const other = seats.find((q) => q !== p && q.color === b.dataset.c);
+        if (other) other.color = p.color;
+        p.color = b.dataset.c;
+        renderSeats();
+      };
+    });
+    row.querySelector('input').oninput = (e) => { p.name = e.target.value; };
+    row.querySelector('.x').onclick = () => {
+      seats.splice(i, 1);
+      renderSeats();
+    };
+    box.appendChild(row);
+  });
+  $('bAddSeat').hidden = seats.length >= R.MAX_PLAYERS;
+}
+
+$('bAddSeat').onclick = () => {
+  if (seats.length >= R.MAX_PLAYERS) return;
+  seats.push({ name: `Player ${seats.length + 1}`, color: COLOURS.find((c) => !seats.some((p) => p.color === c)) });
+  renderSeats();
+};
+
+function openTogether(again) {
+  seats = again && R.isMulti(state) ? state.players.map((p) => ({ name: p.name, color: p.color })) : loadSeats();
+  if (again) document.querySelector(`input[name=play][value=${state.play || 'shared'}]`).checked = true;
+  $('tSeed').value = randomSeed();
+  $('tPace').innerHTML = Net.PACES.map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
+  $('tError').textContent = '';
+  renderSeats();
+  $('together').hidden = false;
+}
+
+function formValues() {
+  const players = seats.map((p, i) => ({ name: p.name.trim().slice(0, 24) || `Player ${i + 1}`, color: p.color }));
+  store.set('opendorf.together.players', JSON.stringify(players));
+  return {
+    players,
+    play: document.querySelector('input[name=play]:checked').value,
+    seed: $('tSeed').value.trim().slice(0, 40) || randomSeed(),
+  };
+}
+
+function startLocal() {
+  const { players, play, seed } = formValues();
+  dropOnline();
+  together = { local: true };
+  enter(R.newGame(seed, { players, play }), { fresh: true });
+  $('together').hidden = true;
+  save();
+  onTurn();
+  curtainFor(0, 0);
+}
+
+// Back to the realm of one's own (or a new one).
+function leaveTogether() {
+  clearTimeout(curtain?.timer);
+  curtain = null;
+  $('curtain').hidden = true;
+  $('lobby').hidden = true;
+  $('over').hidden = true;
+  dropOnline();
+  together = null;
+  const s = loadSaved('normal');
+  if (s) resume(s.saved, s.undo);
+  else startGame(randomSeed());
+}
+
+$('bLocal').onclick = startLocal;
+$('bHost').onclick = openRoom;
+$('bJoin').onclick = () => joinRoom($('tCode').value);
+$('tCode').addEventListener('keydown', (e) => { if (e.key === 'Enter') joinRoom($('tCode').value); });
+$('bTogetherClose').onclick = () => { $('together').hidden = true; };
+$('bSkip').onclick = () => {
+  // The player to move is away: end the turn without them (their tile is thrown away).
+  if (net) net.readySent = send({ t: 'ready' });
+  hud();
+};
+
+// ---------- online ----------
+// Through the Lilienstern game server (net.js). A room's seats are the players; the host sets
+// the way to play and the seed (the room's params), and the pace. A turn is the server's day:
+// the player to move sends 'lay' or 'discard', and every browser ends the day once that move is
+// in (see maybeReady). Every browser runs every move from the server's log on its own copy of the
+// game, refusing the same ones, and after each turn reports a fingerprint of it.
+
+const UNREACHABLE = 'Could not reach the game server, so online play is not available here (on Wavedash, for one, the server does not let the game in). You can still play together on this device.';
+
+let inbox = Promise.resolve();
+
+function send(msg) {
+  return !!net?.conn && net.conn.send(msg);
+}
+
+function hello() {
+  send({ t: 'hello', game: Net.GAME_ID, code: net.code, token: net.token, have: net.started ? net.log.length : 0 });
+}
+
+// Closes the line to the server, if there is one.
+function dropOnline() {
+  if (net) {
+    const old = net;
+    net = null;
+    old.conn?.close();
+  }
+  if (together?.online) together = null;
+}
+
+async function netStart(code) {
+  dropOnline();
+  const n = {
+    token: Net.token(), code, owner: false, faction: null, me: -1, log: [], started: false,
+    away: new Set(), ready: new Set(), readySent: false, pending: false, deadline: null, paused: false,
+  };
+  net = n;
+  n.version = await Net.rulesVersion().catch(() => '');
+  try {
+    n.conn = await Net.connect((msg) => {
+      inbox = inbox.then(() => (net === n ? serverMessage(msg) : null)).catch((e) => console.error(e));
+    }, (s) => {
+      if (net !== n) return;
+      if (s === 'lost') {
+        if (n.started) toast('Lost the line to the game server: trying again…');
+      } else {
+        if (n.started) toast('Connected again.');
+        n.readySent = false;
+        hello();
+      }
+    });
+  } catch {
+    if (net === n) net = null;
+    throw new Error(UNREACHABLE);
+  }
+  if (net !== n) {
+    n.conn.close();
+    throw new Error('cancelled');
+  }
+}
+
+async function openRoom() {
+  const { players, play, seed } = formValues();
+  const pace = $('tPace').value;
+  $('tError').textContent = '';
+  $('bHost').disabled = true;
+  try {
+    await netStart(null);
+    net.owner = true;
+    send({
+      t: 'create', game: Net.GAME_ID, token: net.token, version: net.version, pace, seat: 0,
+      params: { mode: play, seed, seats: players },
+      seed: R.hashSeed(seed),
+      families: players.map((p, i) => ({ i, name: p.name, color: p.color })),
+    });
+  } catch (e) {
+    $('tError').textContent = e.message;
+  } finally {
+    $('bHost').disabled = false;
+  }
+}
+
+// `direct`: from a ?join= link, straight to the room's sheet.
+async function joinRoom(text, direct = false) {
+  const code = Net.cleanCode(text);
+  if (!code) {
+    $('tError').textContent = 'Type the room code.';
+    return;
+  }
+  $('tError').textContent = '';
+  if (direct) {
+    $('lobbyBox').innerHTML = `<h2>Room <span class="code">${esc(code)}</span></h2><p>Joining…</p>`;
+    $('lobby').hidden = false;
+  }
+  $('bJoin').disabled = true;
+  try {
+    await netStart(code);
+    hello();
+  } catch (e) {
+    if (e.message !== 'cancelled') netError(e.message);
+  } finally {
+    $('bJoin').disabled = false;
+  }
+}
+
+// Before the game: on the setup sheet if it is open, else on the room's sheet.
+function netError(msg) {
+  if (!$('together').hidden) {
+    $('tError').textContent = msg;
+    return;
+  }
+  $('lobby').hidden = false;
+  let el = $('lobbyError');
+  if (!el) {
+    $('lobbyBox').innerHTML = `<h2>Playing online</h2><p class="error" id="lobbyError"></p>
+      <button class="btn" id="bLobbyLocal">Play together on this device</button>
+      <button class="btn ghost" id="bLobbyLeave">Back to my realm</button>`;
+    el = $('lobbyError');
+    $('bLobbyLocal').onclick = () => { $('lobby').hidden = true; dropOnline(); openTogether(false); };
+    $('bLobbyLeave').onclick = () => { $('lobby').hidden = true; dropOnline(); setURL(); };
+  }
+  el.textContent = msg;
+}
+
+const inviteLink = (code) => `${location.origin}${location.pathname}?join=${code}`;
+
+async function copyInvite() {
+  const link = inviteLink(net?.code || '');
+  try {
+    await navigator.clipboard.writeText(link);
+    toast('Invite link copied');
+  } catch {
+    toast(esc(link));
+  }
+}
+
+// The room before the game: its code and link, the seats, the pace, and the host's Begin.
+function showLobby(msg) {
+  const p = msg.params || {};
+  const taken = new Map(msg.taken.map(([f, w, gone]) => [f, { w, gone }]));
+  const seated = msg.taken.some(([, w]) => w === 'you');
+  const count = msg.taken.length;
+  const same = !net.version || !msg.version || msg.version === net.version;
+  const rows = msg.families.map((f) => {
+    const t = taken.get(f.i);
+    let status;
+    if (t) {
+      status = t.w === 'you' ? 'You' : t.w === 'host' ? 'The host' : 'A friend';
+      if (t.gone) status += ' (away)';
+      // Someone who left can take their seat back from another tab or device.
+      if (t.gone && !seated && msg.started) status += ` <button data-f="${f.i}">Take over</button>`;
+    } else if (msg.started) {
+      status = 'Not playing';
+    } else {
+      status = seated ? 'Free' : `<button data-f="${f.i}">Sit here</button>`;
+    }
+    const b = BANNERS[f.color] || BANNERS.blue;
+    return `<div class="seatrow" style="--c:${b.hex}"><i></i><b>${esc(f.name)}</b><span>${status}</span></div>`;
+  }).join('');
+  const way = p.mode === 'rival' ? 'Rival lords' : 'Shared realm';
+  const pace = msg.owner && !msg.started
+    ? `<label class="seedrow">Pace <select id="lobbyPace">${Net.PACES.map(([v, t]) => `<option value="${v}"${v === msg.pace ? ' selected' : ''}>${t}</option>`).join('')}</select></label>`
+    : `<p>Pace: <b>${Net.paceName(msg.pace)}</b></p>`;
+  let how;
+  if (msg.started) how = seated ? 'The game is under way.' : 'The game is under way: only a player who is away can be taken over.';
+  else if (msg.owner) how = count < 2 ? 'Waiting for at least one more player.' : 'Begin when everyone is seated.';
+  else how = seated ? 'The host begins the game.' : 'Pick your seat.';
+  $('lobbyBox').innerHTML = `<h2>Room <span class="code">${esc(msg.code)}</span></h2>
+    <p><b>${way}</b> · seed <code>${esc(p.seed)}</code></p>
+    <div class="invite"><input readonly value="${esc(inviteLink(msg.code))}" aria-label="Invite link"><button id="bCopyInvite">Copy</button></div>
+    <div class="seatlist">${rows}</div>${pace}<p class="muted">${how}</p>
+    ${same ? '' : '<p class="error">This room plays another version of OpenDorf: reload the page (all of you).</p>'}
+    <p class="error" id="lobbyError" role="alert"></p>
+    ${msg.owner && !msg.started ? `<button class="btn" id="bBegin"${count < 2 || !same ? ' disabled' : ''}>Begin</button>` : ''}
+    <button class="btn ghost" id="bLobbyLeave">Leave the room</button>`;
+  $('bCopyInvite').onclick = copyInvite;
+  if ($('bBegin')) $('bBegin').onclick = () => { $('bBegin').disabled = true; send({ t: 'begin' }); };
+  if ($('lobbyPace')) $('lobbyPace').onchange = (e) => send({ t: 'pace', pace: e.target.value });
+  $('lobbyBox').querySelectorAll('button[data-f]').forEach((b) => {
+    b.disabled = !same;
+    b.onclick = () => {
+      send({ t: 'pick', faction: +b.dataset.f });
+      $('lobbyBox').querySelectorAll('button[data-f]').forEach((x) => { x.disabled = true; });
+    };
+  });
+  $('bLobbyLeave').onclick = leaveTogether;
+  $('together').hidden = true;
+  $('lobby').hidden = false;
+}
+
+async function serverMessage(msg) {
+  if (msg.t === 'lobby') {
+    net.code = msg.code;
+    net.owner = msg.owner;
+    if (net.started) return;
+    const u = new URL(location.href);
+    u.searchParams.set('join', msg.code);
+    history.replaceState(null, '', u);
+    showLobby(msg);
+  } else if (msg.t === 'start') {
+    net.code = msg.code;
+    net.owner = msg.owner;
+    // Back after a dropped line: only the moves missed. Otherwise (a reload, a late arrival, or
+    // the server asking everyone to replay after fingerprints differed) the whole game again.
+    if (net.started && msg.from > 0 && msg.from === net.log.length) catchUp(msg.commands);
+    else launchOnline(msg);
+  } else if (msg.t === 'cmd') {
+    if (!net.started) return;
+    if (msg.seq !== net.log.length + 1) { send({ t: 'resync' }); return; }
+    onCommand(msg.cmd);
+  } else if (msg.t === 'step') {
+    if (!net.started) return;
+    if (msg.seq !== net.log.length + 1) { send({ t: 'resync' }); return; }
+    onStep();
+  } else if (msg.t === 'away') {
+    net.away = new Set(msg.away);
+    net.ready = new Set(msg.ready);
+    if (net.started) {
+      hud();
+      maybeReady();
+    }
+  } else if (msg.t === 'clock') {
+    net.paused = msg.paused;
+    net.deadline = msg.ms === null || msg.ms === undefined ? null : performance.now() + msg.ms;
+    tick();
+  } else if (msg.t === 'note') {
+    // The server's words are for Lilienstern's days; here an absent player's turn waits (or is
+    // skipped), so leave out that the days go on.
+    if (net.started) toast(esc(String(msg.msg).replace('; the days go on without waiting.', '.')));
+  } else if (msg.t === 'err') {
+    if (net.started) {
+      toast(esc(msg.msg));
+      net.pending = false;
+      onTurn();
+    } else {
+      netError(msg.msg);
+      $('lobbyBox').querySelectorAll('button[data-f]').forEach((x) => { x.disabled = false; });
+      if ($('bBegin')) $('bBegin').disabled = false;
+    }
+  }
+}
+
+// A move of the server's log, run on this browser's game. It is part of the log whether or not
+// the rules take it (every browser refuses the same ones). Returns the events, or null.
+function follow(c) {
+  net.log.push(c);
+  return c.op === 'step' ? R.endTurn(state) : R.command(state, c);
+}
+
+// Builds the game from the room's settings and replays its log.
+function launchOnline(msg) {
+  const st = msg.settings || {};
+  const p = st.params || {};
+  let s;
+  try {
+    const players = (st.players || []).map((f) => {
+      const seat = (Array.isArray(p.seats) && p.seats[f]) || {};
+      return { name: String(seat.name || `Player ${f + 1}`), color: BANNERS[seat.color] ? seat.color : 'blue', seat: f };
+    });
+    s = R.newGame(String(p.seed ?? st.seed), { players, play: p.mode });
+  } catch (e) {
+    netError('This room cannot be played: ' + e.message);
+    return;
+  }
+  clearTimeout(curtain?.timer);
+  curtain = null;
+  together = { online: true };
+  Object.assign(net, { started: true, faction: msg.faction, log: [], readySent: false, pending: false });
+  state = s;
+  for (const c of msg.commands || []) follow(c);
+  net.me = state.players.findIndex((x) => x.seat === msg.faction);
+  for (const id of ['lobby', 'together', 'menu', 'curtain', 'over']) $(id).hidden = true;
+  enter(state);
+  onTurn();
+  maybeReady();
+}
+
+function catchUp(commands) {
+  for (const c of commands) follow(c);
+  view.sync(state);
+  onTurn();
+  maybeReady();
+}
+
+function onCommand(c) {
+  const events = follow(c);
+  const mine = c.faction === net.faction;
+  if (mine) net.pending = false;
+  if (events) {
+    selected = null;
+    view.sync(state);
+    react(events);
+    if (c.op === 'discard') toast(mine ? 'Tile thrown away' : `${who(state.current)} throws a tile away`);
+  } else if (mine) {
+    toast('That move did not count: try again.');
+  }
+  if (state.over) send({ t: 'over' });
+  onTurn();
+  maybeReady();
+}
+
+// The end of a turn: the next player's. Then this browser says what it makes of the game.
+function onStep() {
+  const events = follow({ op: 'step' });
+  net.readySent = false;
+  net.pending = false;
+  send({ t: 'fp', seq: net.log.length, fp: R.fingerprint(state) });
+  if (events) {
+    view.sync(state);
+    react(events);
+  }
+  if (state.over) send({ t: 'over' });
+  selected = null;
+  onTurn();
+  maybeReady();
+}
+
+// Ends the day for this browser once the player to move has made their move (and it is in the
+// log). Not before: the server runs the day as soon as everyone still connected has ended it,
+// so a player who reloads, or whose line drops, in the middle of their turn would lose it.
+// Without a move the turn ends by the pace's clock, or when someone skips an absent player.
+function maybeReady() {
+  if (!net?.started || state.over || net.readySent || net.ready.has(net.faction)) return;
+  // Someone skipped an absent player's turn: follow them.
+  const seat = state.players[state.current].seat;
+  const skipped = net.away.has(seat) && [...net.ready].some((f) => f !== seat);
+  if (!state.moved && !skipped) return;
+  net.readySent = send({ t: 'ready' });
+  hud();
+}
+
+// This browser's player wants a move made: the server puts it in the log, for everyone.
+function request(cmd) {
+  if (!send({ t: 'req', cmd })) {
+    toast('Not connected to the game server: wait a moment.');
+    return;
+  }
+  net.pending = true;
+  selected = null;
+  onTurn();
 }
 
 // ---------- boot ----------
@@ -744,8 +1430,14 @@ async function boot() {
   await view.load((k) => { $('loadbar').style.width = `${Math.round(k * 100)}%`; window.WavedashHook?.progress(k); });
   const params = new URLSearchParams(location.search);
   const urlSeed = params.get('seed');
+  // ?join=CODE goes into an online room (the realm of one's own waits behind it).
+  const join = Net.cleanCode(params.get('join'));
+  const lastMode = store.get('opendorf.mode');
+  const local = !join && (params.get('mode') === 'together' || (!urlSeed && lastMode === 'together')) && loadSaved('together');
   // ?mode=sandbox opens the sandbox; a plain link goes back to whichever was played last.
-  if (params.get('mode') === 'sandbox' || (!urlSeed && store.get('opendorf.mode') === 'sandbox')) {
+  if (local) {
+    resume(local.saved, null);
+  } else if (!join && (params.get('mode') === 'sandbox' || (!urlSeed && lastMode === 'sandbox'))) {
     enterSandbox();
   } else {
     const s = loadSaved('normal');
@@ -758,9 +1450,13 @@ async function boot() {
   insets();
   view.shift = view.shiftGoal;
   view.applyShift();
-  if (!store.get('opendorf.seenHelp')) $('help').hidden = false;
+  if (!store.get('opendorf.seenHelp') && !join) $('help').hidden = false;
   view.start();
-  window.__opendorf = { get state() { return state; }, view, R, placeAt, rotate, chooseTile, enterSandbox, leaveSandbox, tap };
+  if (join) joinRoom(join, true);
+  window.__opendorf = {
+    get state() { return state; }, get net() { return net; }, get together() { return together; },
+    view, R, placeAt, rotate, chooseTile, enterSandbox, leaveSandbox, tap, discardTile, openTogether, joinRoom,
+  };
 }
 
 boot().catch((err) => {

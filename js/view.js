@@ -4,7 +4,7 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from '../vendor/jsm/loaders/GLTFLoader.js';
-import { BASES, BUILDINGS } from './tiles.js';
+import { BANNERS, BASES, BUILDINGS } from './tiles.js';
 import { edgeAt, groups, key, neighbours, tileAt } from './rules.js';
 
 const SQ3 = Math.sqrt(3);
@@ -777,6 +777,51 @@ function decorate(tile, info) {
   return out;
 }
 
+// ---------- banners ----------
+
+// The KayKit buildings come in blue, red, yellow and green, which differ only in where their
+// roofs and flags sit on the shared palette texture: the blue ones use the bottom-left square
+// (u below 0.125, v from 0.75), the others the squares to its right. So a blue model is painted
+// another colour by moving those texture coordinates, with nothing more to download.
+const TEAM = /_blue$/;
+const teamGeos = new Map();
+function teamGeometry(geo, du) {
+  const k = geo.uuid + '|' + du;
+  if (!teamGeos.has(k)) {
+    const g = geo.clone();
+    const uv = g.attributes.uv;
+    for (let i = 0; i < uv.count; i++) {
+      if (uv.getX(i) < 0.125 && uv.getY(i) >= 0.75) uv.setX(i, uv.getX(i) + du);
+    }
+    uv.needsUpdate = true;
+    teamGeos.set(k, g);
+  }
+  return teamGeos.get(k);
+}
+
+// A thin ring just inside a tile's rim, in a player's colour.
+const rimGeo = (() => {
+  const shape = new THREE.Shape();
+  const hole = new THREE.Path();
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI / 6 + i * STEP;
+    const o = [Math.cos(a) * 1.12, Math.sin(a) * 1.12];
+    const n = [Math.cos(a) * 1.03, Math.sin(a) * 1.03];
+    if (i) { shape.lineTo(...o); hole.lineTo(...n); } else { shape.moveTo(...o); hole.moveTo(...n); }
+  }
+  shape.holes.push(hole);
+  return new THREE.ShapeGeometry(shape).rotateX(Math.PI / 2);
+})();
+const rimMats = new Map();
+function rimMaterial(hex, opacity = 0.8) {
+  const k = hex + opacity;
+  if (!rimMats.has(k)) rimMats.set(k, new THREE.MeshBasicMaterial({ color: hex, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide }));
+  return rimMats.get(k);
+}
+
+// The world corner a tile's flag stands in (the back left, so it hides as little as it can).
+const FLAG_AT = { x: -0.5, z: -0.6 };
+
 // ---------- the view ----------
 
 export class View {
@@ -823,6 +868,10 @@ export class View {
     this.clock = new THREE.Clock();
     this.clouds = [];
     this.onFrame = null;
+    // Players' banners: in a rival game every tile shows its layer's flag and rim, and its
+    // buildings their colour; in a shared realm only the tile under the pointer shows its rim.
+    this.banners = null; // { rival, colors: [banner per player] }
+    this.hint = null;
 
     const hexShape = new THREE.Shape();
     for (let i = 0; i < 6; i++) {
@@ -876,10 +925,35 @@ export class View {
     this.thumbs = new Thumbs(this);
   }
 
-  model(name) {
+  // `du`: paint a blue KayKit model another banner colour (see teamGeometry).
+  model(name, du = 0) {
     const t = this.templates[name];
     if (!t) throw new Error('missing model ' + name);
-    return t.clone(true);
+    const m = t.clone(true);
+    if (du) m.traverse((o) => { if (o.isMesh) o.geometry = teamGeometry(o.geometry, du); });
+    return m;
+  }
+
+  // Who plays, from the game: their banners, and whether they show on every tile.
+  setPlayers(state) {
+    this.banners = state.players
+      ? { rival: state.play === 'rival', colors: state.players.map((p) => BANNERS[p.color] || BANNERS.blue) }
+      : null;
+  }
+
+  // A shared realm: the rim of the tile under the pointer, in its layer's colour.
+  setHint(tile) {
+    if (this.hint) {
+      this.scene.remove(this.hint);
+      this.hint = null;
+    }
+    const b = tile && this.banners?.colors[tile.by];
+    if (!b) return;
+    this.hint = new THREE.Mesh(rimGeo, rimMaterial(b.hex, 0.95));
+    this.hint.position.copy(hexToWorld(tile.q, tile.r));
+    this.hint.position.y = tile.base === 'water' ? -0.18 : 0.02;
+    this.hint.renderOrder = 3;
+    this.scene.add(this.hint);
   }
 
   makeClouds() {
@@ -905,8 +979,9 @@ export class View {
     const top = new THREE.Group();
     // A camp sits in its own group, so that when it is cleared it can be seen off on its own.
     const camp = new THREE.Group();
+    const banner = info.banner;
     for (const d of decorate(tile, info)) {
-      const m = this.model(d.m);
+      const m = this.model(d.m, banner && TEAM.test(d.m) ? banner.uv : 0);
       m.position.set(d.x, d.y || 0, d.z);
       m.rotation.set(d.rx || 0, d.ry || 0, d.rz || 0);
       if (Array.isArray(d.s)) m.scale.set(...d.s);
@@ -925,6 +1000,19 @@ export class View {
       const bed = new THREE.Mesh(fieldBed(local), bedMats);
       bed.receiveShadow = true;
       top.add(bed);
+    }
+    if (banner) {
+      // The layer's flag in a fixed corner of the world (so undo the tile's turn), and a rim.
+      const a = tile.rot * STEP;
+      const flag = this.model('flag_blue', banner.uv);
+      flag.position.set(FLAG_AT.x * Math.cos(a) + FLAG_AT.z * Math.sin(a), tile.base === 'water' ? -0.2 : 0, -FLAG_AT.x * Math.sin(a) + FLAG_AT.z * Math.cos(a));
+      flag.rotation.y = a + 0.5;
+      flag.scale.setScalar(2);
+      top.add(flag);
+      const rim = new THREE.Mesh(rimGeo, rimMaterial(banner.hex));
+      rim.position.y = tile.base === 'water' ? -0.185 : 0.015;
+      rim.renderOrder = 1;
+      g.add(rim);
     }
     g.add(top);
     g.userData.top = top;
@@ -947,13 +1035,14 @@ export class View {
     for (const [k, t] of Object.entries(state.tiles)) {
       seen.add(k);
       const info = { forest: forest.get(k), facing: t.building ? facing(state, t) : null, fields: 0 };
+      if (this.banners?.rival && t.by !== undefined) info.banner = this.banners.colors[t.by];
       if (t.camp || t.dungeon) info.mouth = mouthOf(state, t);
       info.pile = t.building ? pileTier(state, t, sizes) : null;
       if (t.feature === 'field') {
         for (const n of neighbours(t.q, t.r)) if (tileAt(state, n.q, n.r)?.feature === 'field') info.fields |= 1 << n.k;
       }
       const fClass = t.feature === 'forest' ? (info.forest >= 5 ? 3 : info.forest >= 2 ? 2 : 1) : 0;
-      const vis = [t.base, t.rot, t.feature, t.building, fClass, info.facing, info.fields, info.pile, t.camp, t.dungeon, info.mouth].join('|');
+      const vis = [t.base, t.rot, t.feature, t.building, fClass, info.facing, info.fields, info.pile, t.camp, t.dungeon, info.mouth, info.banner?.uv].join('|');
       const cur = this.views.get(k);
       if (cur && cur.vis === vis) continue;
       const g = this.tileGroup(t, info);

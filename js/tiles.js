@@ -132,6 +132,16 @@ export const PALETTE = [
     Object.keys(BASES).filter((b) => groupOf(b) === g).sort((x, y) => ways(x) - ways(y)).map((base) => ({ base, group: g }))),
 ];
 
+// Banner colours for players taking turns: the four colours the KayKit buildings come in.
+// `uv` is how far to the right of the blue its colour lies in the pack's palette texture (the
+// view moves a blue building's roofs and flags there to paint it); `ink` reads on `hex`.
+export const BANNERS = {
+  blue: { name: 'Blue', hex: '#2a8bd2', ink: '#ffffff', uv: 0 },
+  red: { name: 'Red', hex: '#d33b3b', ink: '#ffffff', uv: 0.125 },
+  yellow: { name: 'Yellow', hex: '#f4b23e', ink: '#3b2a1a', uv: 0.25 },
+  green: { name: 'Green', hex: '#13a06a', ink: '#ffffff', uv: 0.375 },
+};
+
 // A short name for a tile kind, e.g. "Forest", "Road, bend", "River, 3 ways", "Coast, sea on 2 sides".
 export function tileName(kind) {
   if (kind.feature) return kind.feature[0].toUpperCase() + kind.feature.slice(1);

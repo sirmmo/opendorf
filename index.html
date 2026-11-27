@@ -25,7 +25,9 @@
       <div class="stat"><span class="lbl">Renown</span><b id="score">0</b></div>
       <div class="stat"><span class="lbl">Tiles</span><b id="supply">0</b></div>
       <span class="tag" id="modeTag" hidden title="Sandbox: you choose every tile">Sandbox</span>
+      <span class="tag" id="playTag" hidden></span>
     </div>
+    <div id="players" class="card" hidden></div>
     <div id="charters"></div>
   </div>
 
@@ -36,6 +38,8 @@
     <button class="icon" id="bHelp" title="How to play (H)" aria-label="How to play">?</button>
     <button class="icon" id="bMenu" title="Menu" aria-label="Menu">☰</button>
   </div>
+
+  <div id="turnbar" hidden><span id="turnWho"></span><span id="turnClock"></span><button id="bSkip" hidden>Skip this turn</button></div>
 
   <div id="hand">
     <button class="rot" id="bRotL" title="Turn left (Shift+R)" aria-label="Turn left">⟲</button>
@@ -73,12 +77,14 @@
       <li><b>The wild.</b> Bandits may camp in a big forest, and wolves den in a mountain, far from any village. They keep the woodcutters or miners away until a watchtower or Barracks stands within two tiles and sees them off. The first range of three mountains hides a <i>dungeon</i>: tap its mouth to explore it. Tap a <b>tavern</b> to run it as an inn in OpenInn.</li>
       <li><b>Ruins of an older realm</b> turn up now and then. A house next to them becomes a <i>dig site</i> (one for the first ruin, then one more for every two). A village with a dig site and a tavern or market founds an <i>Archaeological Society</i>; once it also has a church, the Society opens an <i>Academy</i>.</li>
       <li><b>Every building and royal charter brings new tiles.</b> When the last tile is laid, your realm is complete.</li>
+      <li><b>Playing together</b> (menu → <i>Play together</i>): two to four take turns, on this device or online, each with a hand of three from the one supply. In a <i>shared realm</i> you build one realm, and each of you also has a private charter for the tiles you lay. As <i>rival lords</i> every tile flies its layer's banner: its renown is theirs, a building earns for whoever owns its house, and a land or village goes to whoever laid most of it.</li>
     </ol>
     <div class="controls">
       <div><b>Mouse</b> · click to lay · <kbd>R</kbd> or right click to turn · drag to move · right drag to rotate the view · wheel to zoom</div>
       <div><b>Touch</b> · tap a spot, tap again to lay · ⟲ ⟳ to turn · drag, pinch and twist the view</div>
       <div><b>Keys</b> · <kbd>Z</kbd> undo · <kbd>X</kbd> discard · <kbd>C</kbd> center · <kbd>L</kbd> achievements · <kbd>Q</kbd>/<kbd>E</kbd> rotate the view · <kbd>WASD</kbd> move</div>
       <div><b>Sandbox</b> · menu → <i>Sandbox</i> to choose every tile yourself, with no end · <kbd>T</kbd> next tile</div>
+      <div><b>Together</b> · menu → <i>Play together</i> · lay or discard your tile, and the turn passes on · no undo</div>
     </div>
     <button class="btn" id="bHelpClose">Start building</button>
     <p class="credits">Models: KayKit Medieval Hexagon Pack by Kay Lousberg, Ultimate Modular Ruins Pack by Quaternius, Nature Kit and Graveyard Kit by Kenney (CC0). Code: GPL-3.0.</p>
@@ -90,11 +96,15 @@
     <h2 id="menuTitle">Realm</h2>
     <p class="normal-only">Seed <code id="seedLabel"></code></p>
     <p class="sandbox-only">You choose every tile, and the realm never ends.</p>
+    <p class="together-only" id="togetherLabel"></p>
     <button class="btn normal-only" id="bNew">New realm</button>
     <button class="btn alt normal-only" id="bDaily">Today's realm</button>
     <button class="btn alt normal-only" id="bRestart">Restart this realm</button>
     <button class="btn alt normal-only" id="bShare">Copy link to this realm</button>
+    <button class="btn alt normal-only" id="bTogether">Play together</button>
     <button class="btn alt normal-only" id="bSandbox">Sandbox (choose every tile)</button>
+    <button class="btn alt online-only" id="bInvite">Copy the invite link</button>
+    <button class="btn together-only" id="bLeaveTogether">Back to my realm</button>
     <button class="btn sandbox-only" id="bLeave">Back to my realm</button>
     <button class="btn alt sandbox-only" id="bNewSandbox">New sandbox realm</button>
     <button class="btn alt" id="bGeo">Download map (GeoJSON)</button>
@@ -126,11 +136,50 @@
     <h2>The realm is complete</h2>
     <div class="final"><span id="finalScore">0</span><small>renown</small></div>
     <p id="finalBest"></p>
+    <ol id="finalRanks" hidden></ol>
     <ul id="finalStats"></ul>
-    <button class="btn" id="bOverNew">New realm</button>
-    <button class="btn alt" id="bOverRestart">Play this seed again</button>
+    <button class="btn normal-only" id="bOverNew">New realm</button>
+    <button class="btn alt normal-only" id="bOverRestart">Play this seed again</button>
+    <button class="btn together-only" id="bOverAgain">Play together again</button>
+    <button class="btn alt together-only" id="bOverLeave">Back to my realm</button>
     <button class="btn alt" id="bOverGeo">Download map (GeoJSON)</button>
     <button class="btn ghost" id="bOverLook">Look at the realm</button>
+  </div>
+</div>
+
+<div id="together" class="overlay" hidden>
+  <div class="sheet small">
+    <h2>Play together</h2>
+    <div class="ways" role="radiogroup" aria-label="How to play">
+      <label><input type="radio" name="play" value="shared" checked><b>Shared realm</b><span>Build one realm together. Each of you also has a private charter.</span></label>
+      <label><input type="radio" name="play" value="rival"><b>Rival lords</b><span>One map, every tile under its layer's banner. Most renown wins.</span></label>
+    </div>
+    <div id="seats"></div>
+    <button class="linkish" id="bAddSeat">+ Add a player</button>
+    <label class="seedrow">Seed <input id="tSeed" maxlength="40" autocomplete="off" spellcheck="false"></label>
+    <button class="btn" id="bLocal">Play on this device</button>
+    <div class="online">
+      <h3>Online</h3>
+      <label class="seedrow">Pace <select id="tPace"></select></label>
+      <button class="btn alt" id="bHost">Open an online room</button>
+      <p class="muted">You take the first seat; friends join with the room's code or link and take the others.</p>
+      <div class="joinrow"><input id="tCode" placeholder="Room code" maxlength="8" autocomplete="off" spellcheck="false"><button class="btn alt" id="bJoin">Join</button></div>
+      <p class="error" id="tError" role="alert"></p>
+    </div>
+    <button class="btn ghost" id="bTogetherClose">Back</button>
+  </div>
+</div>
+
+<div id="lobby" class="overlay" hidden>
+  <div class="sheet small" id="lobbyBox"></div>
+</div>
+
+<div id="curtain" class="overlay" hidden>
+  <div class="sheet small">
+    <div class="banner-flag" aria-hidden="true"></div>
+    <h2>Pass to <span id="curtainName"></span></h2>
+    <p id="curtainInfo"></p>
+    <button class="btn" id="bCurtain">Play</button>
   </div>
 </div>
 
